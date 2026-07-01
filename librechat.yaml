@@ -1,0 +1,52 @@
+# =============================================================================
+# BmChat 配置 (librechat.yaml)
+# =============================================================================
+version: 1.2.0
+
+# 界面定制
+interface:
+  customWelcome: "欢迎使用 BmChat"
+  # 不显示自定义页脚，用源码里的 BmChat 页脚
+
+# 注册控制: 关闭自由注册，只允许邀请码注册
+registration:
+  socialLogins: []
+
+# 只启用 OpenAI 端点，其余全部不配置（自动隐藏）
+endpoints:
+  openAI:
+    title: "OpenAI"
+    models:
+      default:
+        - "gpt-5.5"
+        - "gpt-5.4"
+        - "gpt-5.4-mini"
+      fetch: false  # 关闭自动拉取，避免 image/audio/embedding 模型出现
+    # 流式输出
+    streamRate: 0
+
+# 模型预设卡片（用户可直接选择）
+modelSpecs:
+  prioritize: true
+  list:
+    - name: "gpt-5.5"
+      label: "GPT-5.5"
+      description: "最新旗舰模型"
+      showInMenu: true
+      preset:
+        endpoint: "openAI"
+        model: "gpt-5.5"
+    - name: "gpt-5.4"
+      label: "GPT-5.4"
+      description: "强大且均衡"
+      showInMenu: true
+      preset:
+        endpoint: "openAI"
+        model: "gpt-5.4"
+    - name: "gpt-5.4-mini"
+      label: "GPT-5.4 Mini"
+      description: "快速且经济"
+      showInMenu: true
+      preset:
+        endpoint: "openAI"
+        model: "gpt-5.4-mini"

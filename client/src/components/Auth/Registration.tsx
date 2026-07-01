@@ -74,7 +74,7 @@ const Registration: React.FC = () => {
   const renderInput = (id: string, label: TranslationKeys, type: string, validation: object) => {
     const fieldLabel = localize(label);
     const field = register(
-      id as 'name' | 'email' | 'username' | 'password' | 'confirm_password',
+      id as 'name' | 'email' | 'username' | 'password' | 'confirm_password' | 'inviteCode',
       validation,
     );
 
@@ -152,7 +152,7 @@ const Registration: React.FC = () => {
             aria-label="Registration form"
             method="POST"
             onSubmit={handleSubmit((data: TRegisterUser) =>
-              registerUser.mutate({ ...data, token: token ?? undefined }),
+              registerUser.mutate({ ...data, token: token ?? undefined, inviteCode: watch('inviteCode') }),
             )}
           >
             {renderInput('name', 'com_auth_full_name', 'text', {
@@ -205,6 +205,9 @@ const Registration: React.FC = () => {
             {renderInput('confirm_password', 'com_auth_password_confirm', 'password', {
               validate: (value: string) =>
                 value === password || localize('com_auth_password_not_match'),
+            })}
+            {renderInput('inviteCode', 'com_auth_invite_code' as TranslationKeys, 'text', {
+              required: localize('com_auth_invite_code_required' as TranslationKeys),
             })}
 
             {startupConfig?.turnstile?.siteKey && (

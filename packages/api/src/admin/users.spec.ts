@@ -32,13 +32,14 @@ function createReqRes(
   overrides: {
     params?: Record<string, string>;
     query?: Record<string, string | string[]>;
+    body?: Record<string, unknown>;
     user?: { _id?: Types.ObjectId; id?: string; role?: string; tenantId?: string };
   } = {},
 ) {
   const req = {
     params: overrides.params ?? {},
     query: overrides.query ?? {},
-    body: {},
+    body: overrides.body ?? {},
     user: overrides.user ?? { _id: new Types.ObjectId(), role: 'admin' },
   } as unknown as ServerRequest;
 
@@ -58,6 +59,9 @@ function createDeps(overrides: Partial<AdminUsersDeps> = {}): AdminUsersDeps {
       .mockResolvedValue({ deletedCount: 1, message: 'User was deleted successfully.' }),
     deleteConfig: jest.fn().mockResolvedValue(null),
     deleteAclEntries: jest.fn().mockResolvedValue(undefined),
+    updateUser: jest.fn().mockResolvedValue(mockUser()),
+    deleteConvos: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+    deleteMessages: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     ...overrides,
   };
 }
@@ -500,6 +504,162 @@ describe('createAdminUsersHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to delete user' });
+    });
+
+    it('cascades deletion of the user conversations and messages', async () => {
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([mockUser({ role: SystemRoles.USER })]),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status } = createReqRes({ params: { id: validUserId } });
+
+      await handlers.deleteUser(req, res);
+
+      expect(deps.deleteMessages).toHaveBeenCalledWith({ user: validUserId });
+      expect(deps.deleteConvos).toHaveBeenCalledWith(validUserId, {});
+      expect(status).toHaveBeenCalledWith(200);
+    });
+
+    it('still succeeds when the user has no conversations to delete', async () => {
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([mockUser({ role: SystemRoles.USER })]),
+        deleteConvos: jest.fn().mockRejectedValue(new Error('Conversation not found')),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status } = createReqRes({ params: { id: validUserId } });
+
+      await handlers.deleteUser(req, res);
+
+      expect(status).toHaveBeenCalledWith(200);
+    });
+  });
+
+  describe('updateUserRole', () => {
+    it('promotes a regular user to admin', async () => {
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([mockUser({ role: SystemRoles.USER })]),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { role: SystemRoles.ADMIN },
+      });
+
+      await handlers.updateUserRole(req, res);
+
+      expect(deps.updateUser).toHaveBeenCalledWith(validUserId, { role: SystemRoles.ADMIN });
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({
+        message: 'Role updated successfully',
+        role: SystemRoles.ADMIN,
+      });
+    });
+
+    it('rejects an unknown role', async () => {
+      const handlers = createAdminUsersHandlers(createDeps());
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { role: 'SUPERUSER' },
+      });
+
+      await handlers.updateUserRole(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error: 'Role must be one of: USER, ADMIN' });
+    });
+
+    it('refuses to demote your own account', async () => {
+      const callerId = new Types.ObjectId();
+      const handlers = createAdminUsersHandlers(createDeps());
+      const { req, res, status, json } = createReqRes({
+        params: { id: callerId.toString() },
+        body: { role: SystemRoles.USER },
+        user: { _id: callerId, role: 'admin' },
+      });
+
+      await handlers.updateUserRole(req, res);
+
+      expect(status).toHaveBeenCalledWith(403);
+      expect(json).toHaveBeenCalledWith({ error: 'Cannot demote your own account' });
+    });
+
+    it('refuses to demote the last admin', async () => {
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([mockUser({ role: SystemRoles.ADMIN })]),
+        countUsers: jest.fn().mockResolvedValue(1),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { role: SystemRoles.USER },
+      });
+
+      await handlers.updateUserRole(req, res);
+
+      expect(deps.updateUser).not.toHaveBeenCalled();
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error: 'Cannot demote the last admin user' });
+    });
+
+    it('demotes an admin when other admins remain', async () => {
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([mockUser({ role: SystemRoles.ADMIN })]),
+        countUsers: jest.fn().mockResolvedValue(2),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status } = createReqRes({
+        params: { id: validUserId },
+        body: { role: SystemRoles.USER },
+      });
+
+      await handlers.updateUserRole(req, res);
+
+      expect(deps.updateUser).toHaveBeenCalledWith(validUserId, { role: SystemRoles.USER });
+      expect(status).toHaveBeenCalledWith(200);
+    });
+
+    it('returns 404 when the target user does not exist', async () => {
+      const deps = createDeps({ findUsers: jest.fn().mockResolvedValue([]) });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { role: SystemRoles.ADMIN },
+      });
+
+      await handlers.updateUserRole(req, res);
+
+      expect(status).toHaveBeenCalledWith(404);
+      expect(json).toHaveBeenCalledWith({ error: 'User not found' });
+    });
+
+    it('is a no-op when the role is unchanged', async () => {
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([mockUser({ role: SystemRoles.ADMIN })]),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { role: SystemRoles.ADMIN },
+      });
+
+      await handlers.updateUserRole(req, res);
+
+      expect(deps.updateUser).not.toHaveBeenCalled();
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({ message: 'Role unchanged', role: SystemRoles.ADMIN });
+    });
+
+    it('returns 400 for an invalid ObjectId', async () => {
+      const handlers = createAdminUsersHandlers(createDeps());
+      const { req, res, status, json } = createReqRes({
+        params: { id: 'not-an-id' },
+        body: { role: SystemRoles.ADMIN },
+      });
+
+      await handlers.updateUserRole(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error: 'Invalid user ID format' });
     });
   });
 });

@@ -55,6 +55,7 @@ export interface ConversationMethods {
     nextCursor: string | null;
     convoMap: Record<string, unknown>;
   }>;
+  countConversations(filter: FilterQuery<IConversation>): Promise<number>;
   getConvo(user: string, conversationId: string): Promise<IConversation | null>;
   getConvoRetention(
     user: string,
@@ -108,6 +109,19 @@ export function createConversationMethods(
     } catch (error) {
       logger.error('[getConvo] Error getting single conversation', error);
       throw new Error('Error getting single conversation');
+    }
+  }
+
+  async function countConversations(filter: FilterQuery<IConversation>) {
+    try {
+      const Conversation = mongoose.models.Conversation as Model<IConversation>;
+      return await Conversation.countDocuments({
+        ...filter,
+        ...getVisibleConversationRetentionFilter(),
+      });
+    } catch (error) {
+      logger.error('[countConversations] Error counting conversations', error);
+      throw new Error('Error counting conversations');
     }
   }
 
@@ -827,6 +841,7 @@ export function createConversationMethods(
     getConvosByCursor,
     getConvosQueried,
     getConvo,
+    countConversations,
     getConvoRetention,
     getConvoTitle,
     deleteConvos,

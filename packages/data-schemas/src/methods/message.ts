@@ -63,6 +63,7 @@ export interface MessageMethods {
     hydrate?: boolean,
   ): Promise<unknown>;
   deleteMessages(filter: FilterQuery<IMessage>): Promise<DeleteResult>;
+  countMessages(filter: FilterQuery<IMessage>): Promise<number>;
 }
 
 export function createMessageMethods(mongoose: typeof import('mongoose')): MessageMethods {
@@ -383,6 +384,16 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
     }
   }
 
+  async function countMessages(filter: FilterQuery<IMessage>) {
+    try {
+      const Message = mongoose.models.Message as Model<IMessage>;
+      return await Message.countDocuments(filter);
+    } catch (err) {
+      logger.error('Error counting messages:', err);
+      throw err;
+    }
+  }
+
   /**
    * Retrieves paginated messages with custom sorting and cursor support.
    */
@@ -447,5 +458,6 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
     getMessagesByCursor,
     searchMessages,
     deleteMessages,
+    countMessages,
   };
 }

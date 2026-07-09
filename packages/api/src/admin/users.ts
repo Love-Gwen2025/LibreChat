@@ -4,6 +4,8 @@ import { logger, isValidObjectIdString } from '@librechat/data-schemas';
 import type {
   IUser,
   IConfig,
+  IMessage,
+  IConversation,
   AdminUserListItem,
   AdminUserSearchResult,
   UserDeleteResult,
@@ -26,10 +28,9 @@ export interface AdminUsersDeps {
   countUsers: (filter?: FilterQuery<IUser>) => Promise<number>;
   /**
    * Thin data-layer delete — removes the User document only.
-   * Full cascade of user-owned resources (conversations, messages, files, tokens, etc.)
-   * is handled by `UserController.deleteUserController` in the self-delete flow.
-   * This admin endpoint currently cascades Config and AclEntries.
-   * A future iteration should consolidate the full cascade into a shared service function.
+   * This admin endpoint cascades Config, AclEntries, conversations, and messages.
+   * Files, tokens, and plugin auth remain exclusive to the self-delete flow in
+   * `UserController.deleteUserController`.
    */
   deleteUserById: (userId: string) => Promise<UserDeleteResult>;
   deleteConfig: (
@@ -40,14 +41,40 @@ export interface AdminUsersDeps {
     principalType: PrincipalType;
     principalId: string | Types.ObjectId;
   }) => Promise<void>;
+  updateUser: (userId: string, updateData: Partial<IUser>) => Promise<IUser | null>;
+  /** Removes the user's conversations and their messages. Throws when the user has none. */
+  deleteConvos: (user: string, filter: FilterQuery<IConversation>) => Promise<unknown>;
+  deleteMessages: (filter: FilterQuery<IMessage>) => Promise<unknown>;
 }
+
+const ASSIGNABLE_ROLES: ReadonlySet<string> = new Set([SystemRoles.USER, SystemRoles.ADMIN]);
 
 export function createAdminUsersHandlers(deps: AdminUsersDeps): {
   listUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   searchUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   deleteUser: (req: ServerRequest, res: Response) => Promise<Response>;
+  updateUserRole: (req: ServerRequest, res: Response) => Promise<Response>;
 } {
-  const { findUsers, countUsers, deleteUserById, deleteConfig, deleteAclEntries } = deps;
+  const {
+    findUsers,
+    countUsers,
+    deleteUserById,
+    deleteConfig,
+    deleteAclEntries,
+    updateUser,
+    deleteConvos,
+    deleteMessages,
+  } = deps;
+
+  /** Mirrors the self-delete cascade order: messages first, then conversations. */
+  async function deleteConversationAssets(userId: string) {
+    await deleteMessages({ user: userId });
+    try {
+      await deleteConvos(userId, {});
+    } catch (error) {
+      logger.debug('[adminUsers] no conversations to delete for user:', userId, error);
+    }
+  }
 
   async function listUsersHandler(req: ServerRequest, res: Response) {
     try {
@@ -166,6 +193,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
       const cleanupResults = await Promise.allSettled([
         deleteConfig(PrincipalType.USER, id),
         deleteAclEntries({ principalType: PrincipalType.USER, principalId: objectId }),
+        deleteConversationAssets(id),
       ]);
       for (const r of cleanupResults) {
         if (r.status === 'rejected') {
@@ -180,9 +208,56 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     }
   }
 
+  async function updateUserRoleHandler(req: ServerRequest, res: Response) {
+    try {
+      const { id } = req.params as { id: string };
+      const { role } = req.body as { role?: string };
+
+      if (!isValidObjectIdString(id)) {
+        return res.status(400).json({ error: 'Invalid user ID format' });
+      }
+
+      if (!role || !ASSIGNABLE_ROLES.has(role)) {
+        return res.status(400).json({ error: 'Role must be one of: USER, ADMIN' });
+      }
+
+      const callerId = req.user?._id?.toString() ?? req.user?.id;
+      if (callerId === id && role !== SystemRoles.ADMIN) {
+        return res.status(403).json({ error: 'Cannot demote your own account' });
+      }
+
+      const [targetUser] = await findUsers({ _id: id }, 'role', { limit: 1 });
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (targetUser.role === role) {
+        return res.status(200).json({ message: 'Role unchanged', role });
+      }
+
+      if (targetUser.role === SystemRoles.ADMIN && role !== SystemRoles.ADMIN) {
+        const adminCount = await countUsers({ role: SystemRoles.ADMIN });
+        if (adminCount <= 1) {
+          return res.status(400).json({ error: 'Cannot demote the last admin user' });
+        }
+      }
+
+      const updated = await updateUser(id, { role });
+      if (!updated) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      return res.status(200).json({ message: 'Role updated successfully', role });
+    } catch (error) {
+      logger.error('[adminUsers] updateUserRole error:', error);
+      return res.status(500).json({ error: 'Failed to update user role' });
+    }
+  }
+
   return {
     listUsers: listUsersHandler,
     searchUsers: searchUsersHandler,
     deleteUser: deleteUserHandler,
+    updateUserRole: updateUserRoleHandler,
   };
 }

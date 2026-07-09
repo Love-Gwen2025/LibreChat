@@ -1,5 +1,5 @@
 const express = require('express');
-const { createAdminUsersHandlers } = require('@librechat/api');
+const { createAdminConversationsHandlers } = require('@librechat/api');
 const { SystemCapabilities } = require('@librechat/data-schemas');
 const { requireCapability } = require('~/server/middleware/roles/capabilities');
 const { requireJwtAuth } = require('~/server/middleware');
@@ -11,22 +11,21 @@ const requireAdminAccess = requireCapability(SystemCapabilities.ACCESS_ADMIN);
 const requireReadUsers = requireCapability(SystemCapabilities.READ_USERS);
 const requireManageUsers = requireCapability(SystemCapabilities.MANAGE_USERS);
 
-const handlers = createAdminUsersHandlers({
+const handlers = createAdminConversationsHandlers({
   findUsers: db.findUsers,
-  countUsers: db.countUsers,
-  deleteUserById: db.deleteUserById,
-  deleteConfig: db.deleteConfig,
-  deleteAclEntries: db.deleteAclEntries,
-  updateUser: db.updateUser,
+  getConvosByCursor: db.getConvosByCursor,
+  countConversations: db.countConversations,
+  getConvo: db.getConvo,
   deleteConvos: db.deleteConvos,
-  deleteMessages: db.deleteMessages,
+  getMessages: db.getMessages,
+  countMessages: db.countMessages,
 });
 
 router.use(requireJwtAuth, requireAdminAccess);
 
-router.get('/', requireReadUsers, handlers.listUsers);
-router.get('/search', requireReadUsers, handlers.searchUsers);
-router.patch('/:id/role', requireManageUsers, handlers.updateUserRole);
-router.delete('/:id', requireManageUsers, handlers.deleteUser);
+router.get('/:userId/stats', requireReadUsers, handlers.getUserAssetStats);
+router.get('/:userId', requireReadUsers, handlers.listConversations);
+router.get('/:userId/:conversationId', requireReadUsers, handlers.getConversationMessages);
+router.delete('/:userId/:conversationId', requireManageUsers, handlers.deleteConversation);
 
 module.exports = router;

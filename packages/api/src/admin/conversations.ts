@@ -56,13 +56,13 @@ function parseLimit(raw: unknown): number {
   return Math.min(Math.max(parsed, 1), MAX_CONVERSATION_LIMIT);
 }
 
-function toListItem(convo: IConversation): AdminConversationListItem {
+function toListItem(convo: IConversation, messageCount = 0): AdminConversationListItem {
   return {
     conversationId: convo.conversationId,
     title: convo.title ?? '',
     endpoint: convo.endpoint ?? '',
     model: convo.model ?? '',
-    messageCount: convo.messages?.length ?? 0,
+    messageCount,
     isArchived: convo.isArchived ?? false,
     createdAt: convo.createdAt?.toISOString(),
     updatedAt: convo.updatedAt?.toISOString(),
@@ -105,6 +105,28 @@ export function createAdminConversationsHandlers(deps: AdminConversationsDeps): 
     return Boolean(user);
   }
 
+  /**
+   * `getConvosByCursor` projects away the `messages` array, so counts are tallied
+   * from a single `$in` query rather than one lookup per conversation.
+   */
+  async function countMessagesByConversation(
+    userId: string,
+    conversationIds: string[],
+  ): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    if (!conversationIds.length) {
+      return counts;
+    }
+    const messages = await getMessages(
+      { conversationId: { $in: conversationIds }, user: userId },
+      'conversationId',
+    );
+    for (const message of messages) {
+      counts.set(message.conversationId, (counts.get(message.conversationId) ?? 0) + 1);
+    }
+    return counts;
+  }
+
   async function listConversationsHandler(req: ServerRequest, res: Response) {
     try {
       const { userId } = req.params as unknown as UserIdParams;
@@ -124,8 +146,15 @@ export function createAdminConversationsHandlers(deps: AdminConversationsDeps): 
         countConversations({ user: userId }),
       ]);
 
+      const messageCounts = await countMessagesByConversation(
+        userId,
+        conversations.map((convo) => convo.conversationId),
+      );
+
       return res.status(200).json({
-        conversations: conversations.map(toListItem),
+        conversations: conversations.map((convo) =>
+          toListItem(convo, messageCounts.get(convo.conversationId) ?? 0),
+        ),
         nextCursor,
         total,
       });
@@ -153,7 +182,7 @@ export function createAdminConversationsHandlers(deps: AdminConversationsDeps): 
       const messages = await getMessages({ conversationId, user: userId });
 
       return res.status(200).json({
-        conversation: toListItem(convo),
+        conversation: toListItem(convo, messages.length),
         messages: messages.map(toMessageItem),
       });
     } catch (error) {

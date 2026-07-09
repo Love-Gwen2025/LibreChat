@@ -83,6 +83,7 @@ describe('createAdminConversationsHandlers', () => {
           .fn()
           .mockResolvedValue({ conversations: [mockConvo()], nextCursor: 'next-page' }),
         countConversations: jest.fn().mockResolvedValue(7),
+        getMessages: jest.fn().mockResolvedValue([mockMessage(), mockMessage({ messageId: 'm2' })]),
       });
       const handlers = createAdminConversationsHandlers(deps);
       const { req, res, status, json } = createReqRes({ params: { userId: validUserId } });
@@ -97,6 +98,50 @@ describe('createAdminConversationsHandlers', () => {
         nextCursor: 'next-page',
         total: 7,
       });
+    });
+
+    it('tallies message counts with one query, not one per conversation', async () => {
+      const other = mockConvo({ conversationId: 'second-convo' });
+      const deps = createDeps({
+        getConvosByCursor: jest
+          .fn()
+          .mockResolvedValue({ conversations: [mockConvo(), other], nextCursor: null }),
+        getMessages: jest
+          .fn()
+          .mockResolvedValue([
+            mockMessage(),
+            mockMessage({ messageId: 'm2' }),
+            mockMessage({ messageId: 'm3', conversationId: 'second-convo' }),
+          ]),
+      });
+      const handlers = createAdminConversationsHandlers(deps);
+      const { req, res, json } = createReqRes({ params: { userId: validUserId } });
+
+      await handlers.listConversations(req, res);
+
+      expect(deps.getMessages).toHaveBeenCalledTimes(1);
+      expect(deps.getMessages).toHaveBeenCalledWith(
+        { conversationId: { $in: [conversationId, 'second-convo'] }, user: validUserId },
+        'conversationId',
+      );
+      expect(json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversations: [
+            expect.objectContaining({ conversationId, messageCount: 2 }),
+            expect.objectContaining({ conversationId: 'second-convo', messageCount: 1 }),
+          ],
+        }),
+      );
+    });
+
+    it('skips the message query when the user has no conversations', async () => {
+      const deps = createDeps();
+      const handlers = createAdminConversationsHandlers(deps);
+      const { req, res } = createReqRes({ params: { userId: validUserId } });
+
+      await handlers.listConversations(req, res);
+
+      expect(deps.getMessages).not.toHaveBeenCalled();
     });
 
     it('forwards the cursor and clamps an oversized limit', async () => {
@@ -165,7 +210,7 @@ describe('createAdminConversationsHandlers', () => {
       expect(deps.getMessages).toHaveBeenCalledWith({ conversationId, user: validUserId });
       expect(status).toHaveBeenCalledWith(200);
       expect(json).toHaveBeenCalledWith({
-        conversation: expect.objectContaining({ conversationId }),
+        conversation: expect.objectContaining({ conversationId, messageCount: 2 }),
         messages: [
           expect.objectContaining({ messageId: 'm1', text: 'hello', isCreatedByUser: true }),
           expect.objectContaining({ messageId: 'm2' }),

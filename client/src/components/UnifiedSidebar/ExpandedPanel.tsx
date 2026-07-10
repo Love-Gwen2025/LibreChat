@@ -1,4 +1,4 @@
-import { memo, useCallback, lazy, Suspense } from 'react';
+import { lazy, memo, Suspense, useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
 import { SquarePen } from 'lucide-react';
 import { QueryKeys } from 'librechat-data-provider';
@@ -6,10 +6,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Skeleton, Sidebar, Button, TooltipAnchor } from '@librechat/client';
 import type { NavLink } from '~/common';
 import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcuts';
-import { useActivePanel, resolveActivePanel, DEFAULT_PANEL } from '~/Providers';
 import { CLOSE_SIDEBAR_ID } from '~/components/Chat/Menus/OpenSidebar';
+import { DEFAULT_PANEL, useActivePanel } from '~/Providers';
+import SidePanelNav from '~/components/SidePanel/Nav';
 import { useLocalize, useNewConvo } from '~/hooks';
-import { clearMessagesCache, cn } from '~/utils';
+import { clearMessagesCache } from '~/utils';
 import store from '~/store';
 
 const AccountSettings = lazy(() => import('~/components/Nav/AccountSettings'));
@@ -62,127 +63,45 @@ const NewChatButton = memo(function NewChatButton({
   );
 });
 
-const NavIconButton = memo(function NavIconButton({
-  link,
-  isActive,
-  expanded,
-  setActive,
-  onExpand,
-  onCollapse,
-}: {
-  link: NavLink;
-  isActive: boolean;
-  expanded: boolean;
-  setActive: (id: string) => void;
-  onExpand?: () => void;
-  onCollapse?: () => void;
-}) {
+function ExpandedPanel({ links, onCollapse }: { links: NavLink[]; onCollapse: () => void }) {
   const localize = useLocalize();
-
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (link.onClick) {
-        link.onClick(e);
-        return;
-      }
-      if (isActive && expanded) {
-        onCollapse?.();
-        return;
-      }
-      if (!isActive) {
-        setActive(link.id);
-      }
-      if (!expanded) {
-        onExpand?.();
-      }
-    },
-    [link, isActive, setActive, expanded, onExpand, onCollapse],
-  );
-
-  return (
-    <TooltipAnchor
-      description={localize(link.title)}
-      side="right"
-      render={
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label={localize(link.title)}
-          aria-pressed={isActive}
-          data-testid={`nav-panel-${link.id}`}
-          className={cn(
-            'h-9 w-9 rounded-lg',
-            isActive ? 'bg-surface-active-alt text-text-primary' : 'text-text-secondary',
-          )}
-          onClick={handleClick}
-        >
-          <link.icon className="h-5 w-5" aria-hidden="true" />
-        </Button>
-      }
-    />
-  );
-});
-
-function ExpandedPanel({
-  links,
-  expanded = true,
-  onCollapse,
-  onExpand,
-}: {
-  links: NavLink[];
-  expanded?: boolean;
-  onCollapse?: () => void;
-  onExpand?: () => void;
-}) {
-  const localize = useLocalize();
-  const { active, setActive } = useActivePanel();
-  const effectiveActive = resolveActivePanel(active, links);
-
-  const toggleLabel = expanded ? 'com_nav_close_sidebar' : 'com_nav_open_sidebar';
-  const toggleClick = expanded ? onCollapse : onExpand;
-  const toggleSidebarHint = useShortcutHint('toggleSidebar', localize(toggleLabel));
+  const { setActive } = useActivePanel();
+  const toggleSidebarHint = useShortcutHint('toggleSidebar', localize('com_nav_close_sidebar'));
   const toggleSidebarAriaKey = useShortcutAriaKey('toggleSidebar');
 
   return (
-    <div className="flex h-full flex-shrink-0 flex-col gap-2 border-r border-border-light bg-surface-primary-alt px-2 py-2">
-      <TooltipAnchor
-        side="right"
-        description={toggleSidebarHint}
-        render={
-          <Button
-            id={expanded ? CLOSE_SIDEBAR_ID : undefined}
-            data-testid={expanded ? 'close-sidebar-button' : 'open-sidebar-button'}
-            size="icon"
-            variant="ghost"
-            aria-label={localize(toggleLabel)}
-            aria-expanded={expanded}
-            aria-keyshortcuts={toggleSidebarAriaKey}
-            className="h-9 w-9 rounded-lg"
-            onClick={toggleClick}
-          >
-            <Sidebar aria-hidden="true" className="h-5 w-5 text-text-primary" />
-          </Button>
-        }
-      />
-      <NewChatButton setActive={setActive} />
-      <div className="mx-2 border-b border-border-light" />
-      <div className="flex flex-col gap-1 overflow-y-auto">
-        {links.map((link) => (
-          <NavIconButton
-            key={link.id}
-            link={link}
-            isActive={link.id === effectiveActive}
-            expanded={expanded ?? true}
-            setActive={setActive}
-            onExpand={onExpand}
-            onCollapse={onCollapse}
-          />
-        ))}
+    <div
+      className="flex h-full w-full min-w-0 flex-col bg-surface-primary-alt"
+      data-testid="conversation-sidebar"
+    >
+      <div className="flex h-[52px] flex-shrink-0 items-center justify-between border-b border-border-light px-3">
+        <TooltipAnchor
+          side="right"
+          description={toggleSidebarHint}
+          render={
+            <Button
+              id={CLOSE_SIDEBAR_ID}
+              data-testid="close-sidebar-button"
+              size="icon"
+              variant="ghost"
+              aria-label={localize('com_nav_close_sidebar')}
+              aria-expanded={true}
+              aria-keyshortcuts={toggleSidebarAriaKey}
+              className="h-9 w-9 rounded-lg"
+              onClick={onCollapse}
+            >
+              <Sidebar aria-hidden="true" className="h-5 w-5 text-text-primary" />
+            </Button>
+          }
+        />
+        <NewChatButton setActive={setActive} />
       </div>
-
-      <div className="mt-auto">
-        <Suspense fallback={<Skeleton className="h-9 w-9 rounded-lg" />}>
-          <AccountSettings collapsed />
+      <nav id="chat-history-nav" className="min-h-0 flex-1 overflow-hidden">
+        <SidePanelNav links={links} />
+      </nav>
+      <div className="flex-shrink-0 border-t border-border-light px-2 py-2">
+        <Suspense fallback={<Skeleton className="h-12 w-full rounded-lg" />}>
+          <AccountSettings />
         </Suspense>
       </div>
     </div>

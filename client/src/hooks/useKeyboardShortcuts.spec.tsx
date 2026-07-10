@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TConversation } from 'librechat-data-provider';
 import type { MutableSnapshot } from 'recoil';
 import type { ReactNode } from 'react';
+import { ActivePanelProvider, useActivePanel } from '~/Providers';
 import useKeyboardShortcuts, {
   isOverridden,
   effectiveBinding,
@@ -43,10 +44,12 @@ function Harness() {
   useKeyboardShortcuts();
   const deleteTarget = useRecoilValue(store.keyboardDeleteTarget);
   const sidebarExpanded = useRecoilValue(store.sidebarExpanded);
+  const { active: activePanel } = useActivePanel();
   return (
     <>
       <span data-testid="delete-target">{deleteTarget?.conversationId ?? 'none'}</span>
       <span data-testid="sidebar">{String(sidebarExpanded)}</span>
+      <span data-testid="active-panel">{activePanel}</span>
     </>
   );
 }
@@ -61,7 +64,9 @@ function renderHarness(conversation?: TConversation, route = '/c/test-convo') {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={new QueryClient()}>
         <RecoilRoot initializeState={initializeState}>
-          <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+          <MemoryRouter initialEntries={[route]}>
+            <ActivePanelProvider>{children}</ActivePanelProvider>
+          </MemoryRouter>
         </RecoilRoot>
       </QueryClientProvider>
     ),
@@ -197,6 +202,19 @@ describe('global shortcut dispatch', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(textarea);
+  });
+
+  it('opens a configured panel shortcut without a visible icon rail', () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ openAgents: { mac: 'Meta+Shift+A', other: 'Control+Shift+A' } }),
+    );
+    const { getByTestId } = renderHarness();
+
+    const event = dispatchKey({ key: 'a', ctrlKey: true, shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(getByTestId('active-panel').textContent).toBe('agents');
   });
 });
 

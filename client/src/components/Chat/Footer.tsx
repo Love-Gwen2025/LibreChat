@@ -39,9 +39,9 @@ function Footer({ className, startupConfig }: FooterProps) {
   const mainContentParts = (
     typeof config?.customFooter === 'string'
       ? config.customFooter
-      : '[BmChat ' +
+      : '[Shchat ' +
         Constants.VERSION +
-        '](https://bm.clawvp.com) - ' +
+        '](https://chat.shuohu.com) - ' +
         localize('com_ui_latest_footer')
   ).split('|');
 

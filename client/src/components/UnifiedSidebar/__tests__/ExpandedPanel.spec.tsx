@@ -1,8 +1,8 @@
 import React from 'react';
 import { RecoilRoot } from 'recoil';
 import '@testing-library/jest-dom/extend-expect';
-import { MessagesSquare, NotebookPen } from 'lucide-react';
-import { render, fireEvent, screen } from '@testing-library/react';
+import { MessagesSquare } from 'lucide-react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { MutableSnapshot } from 'recoil';
 import { ActivePanelProvider, DEFAULT_PANEL } from '~/Providers/ActivePanelContext';
@@ -37,6 +37,13 @@ jest.mock('~/hooks', () => ({
   useNewConvo: () => ({ newConversation: mockNewConversation }),
 }));
 
+jest.mock('~/hooks/useKeyboardShortcuts', () => ({
+  useShortcutAriaKey: () => undefined,
+  useShortcutHint: (_id: string, description: string) => description,
+}));
+
+jest.mock('~/Providers', () => jest.requireActual('~/Providers/ActivePanelContext'));
+
 jest.mock('~/utils', () => ({
   clearMessagesCache: (...args: unknown[]) => mockClearMessagesCache(...args),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(' '),
@@ -46,39 +53,42 @@ jest.mock('~/components/Chat/Menus/OpenSidebar', () => ({
   CLOSE_SIDEBAR_ID: 'close-sidebar',
 }));
 
+jest.mock('~/components/SidePanel/Nav', () => ({
+  __esModule: true,
+  default: ({ links }: { links: Array<{ id: string }> }) => (
+    <div data-testid="sidebar-content">{links.map((link) => link.id).join(',')}</div>
+  ),
+}));
+
 jest.mock('~/components/Nav/AccountSettings', () => ({
   __esModule: true,
-  default: () => <div data-testid="account-settings" />,
+  default: ({ collapsed = false }: { collapsed?: boolean }) => (
+    <div data-collapsed={String(collapsed)} data-testid="account-settings">
+      account
+    </div>
+  ),
 }));
 
 import ExpandedPanel from '../ExpandedPanel';
 import store from '~/store';
 
-const createLinks = () => [
+const links = [
   {
     title: 'com_ui_chat_history' as const,
+    label: '',
     icon: MessagesSquare,
     id: DEFAULT_PANEL,
-  },
-  {
-    title: 'com_ui_prompts' as const,
-    icon: NotebookPen,
-    id: 'prompts',
   },
 ];
 
 const createQueryClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 function renderPanel({
-  expanded = true,
   onCollapse = jest.fn(),
-  onExpand = jest.fn(),
   initialPanel = DEFAULT_PANEL,
   initializeState,
 }: {
-  expanded?: boolean;
   onCollapse?: jest.Mock;
-  onExpand?: jest.Mock;
   initialPanel?: string;
   initializeState?: (snapshot: MutableSnapshot) => void;
 } = {}) {
@@ -90,18 +100,19 @@ function renderPanel({
     <QueryClientProvider client={createQueryClient()}>
       <RecoilRoot initializeState={initializeState}>
         <ActivePanelProvider>
-          <ExpandedPanel
-            links={createLinks()}
-            expanded={expanded}
-            onCollapse={onCollapse}
-            onExpand={onExpand}
-          />
+          <ExpandedPanel links={links} onCollapse={onCollapse} />
         </ActivePanelProvider>
       </RecoilRoot>
     </QueryClientProvider>,
   );
 
-  return { ...result, onCollapse, onExpand };
+  return { ...result, onCollapse };
+}
+
+async function renderReady(options?: Parameters<typeof renderPanel>[0]) {
+  const result = renderPanel(options);
+  await screen.findByTestId('account-settings');
+  return result;
 }
 
 describe('ExpandedPanel', () => {
@@ -110,63 +121,52 @@ describe('ExpandedPanel', () => {
     localStorage.clear();
   });
 
-  describe('NavIconButton collapse toggle', () => {
-    it('collapses sidebar when clicking the active icon while expanded', () => {
-      const { onCollapse } = renderPanel({ expanded: true });
-      const activeButton = screen.getByRole('button', { name: 'com_ui_chat_history' });
-      fireEvent.click(activeButton);
-      expect(onCollapse).toHaveBeenCalledTimes(1);
-    });
+  it('renders conversation content without the icon strip', async () => {
+    await renderReady();
 
-    it('switches panel when clicking an inactive icon while expanded', () => {
-      const { onCollapse } = renderPanel({ expanded: true });
-      const inactiveButton = screen.getByRole('button', { name: 'com_ui_prompts' });
-      fireEvent.click(inactiveButton);
-      expect(onCollapse).not.toHaveBeenCalled();
-      expect(localStorage.getItem('side:active-panel')).toBe('prompts');
-    });
-
-    it('expands sidebar when clicking any icon while collapsed', () => {
-      const { onExpand } = renderPanel({ expanded: false });
-      const activeButton = screen.getByRole('button', { name: 'com_ui_chat_history' });
-      fireEvent.click(activeButton);
-      expect(onExpand).toHaveBeenCalledTimes(1);
-    });
-
-    it('sets active panel and expands when clicking an inactive icon while collapsed', () => {
-      const { onExpand } = renderPanel({ expanded: false });
-      const inactiveButton = screen.getByRole('button', { name: 'com_ui_prompts' });
-      fireEvent.click(inactiveButton);
-      expect(onExpand).toHaveBeenCalledTimes(1);
-      expect(localStorage.getItem('side:active-panel')).toBe('prompts');
-    });
+    expect(screen.getByTestId('sidebar-content')).toHaveTextContent(DEFAULT_PANEL);
+    expect(screen.queryByTestId(`nav-panel-${DEFAULT_PANEL}`)).not.toBeInTheDocument();
   });
 
-  describe('NewChatButton panel switch', () => {
-    it('switches to chat history panel on new chat click when setting is enabled', () => {
-      renderPanel({ expanded: true, initialPanel: 'prompts' });
+  it('closes the sidebar from its header', async () => {
+    const { onCollapse } = await renderReady();
 
-      const newChatLink = screen.getByTestId('new-chat-button');
-      fireEvent.click(newChatLink);
+    fireEvent.click(screen.getByTestId('close-sidebar-button'));
 
-      expect(mockNewConversation).toHaveBeenCalledTimes(1);
-      expect(localStorage.getItem('side:active-panel')).toBe(DEFAULT_PANEL);
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it('places the expanded account menu after the conversation area', async () => {
+    await renderReady();
+
+    const content = screen.getByTestId('sidebar-content');
+    const account = screen.getByTestId('account-settings');
+    expect(account).toHaveAttribute('data-collapsed', 'false');
+    expect(
+      content.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('keeps new chat available and switches back to conversation history', async () => {
+    await renderReady({ initialPanel: 'prompts' });
+
+    fireEvent.click(screen.getByTestId('new-chat-button'));
+
+    expect(mockNewConversation).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('side:active-panel')).toBe(DEFAULT_PANEL);
+  });
+
+  it('respects the setting that keeps the current panel on new chat', async () => {
+    await renderReady({
+      initialPanel: 'prompts',
+      initializeState: ({ set }: MutableSnapshot) => {
+        set(store.newChatSwitchToHistory, false);
+      },
     });
 
-    it('does not switch panel on new chat click when setting is disabled', () => {
-      renderPanel({
-        expanded: true,
-        initialPanel: 'prompts',
-        initializeState: ({ set }: MutableSnapshot) => {
-          set(store.newChatSwitchToHistory, false);
-        },
-      });
+    fireEvent.click(screen.getByTestId('new-chat-button'));
 
-      const newChatLink = screen.getByTestId('new-chat-button');
-      fireEvent.click(newChatLink);
-
-      expect(mockNewConversation).toHaveBeenCalledTimes(1);
-      expect(localStorage.getItem('side:active-panel')).toBe('prompts');
-    });
+    expect(mockNewConversation).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('side:active-panel')).toBe('prompts');
   });
 });

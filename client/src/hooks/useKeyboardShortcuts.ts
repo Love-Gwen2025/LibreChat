@@ -16,6 +16,7 @@ import {
   parseBinding,
 } from '~/utils/shortcuts';
 import { mainTextareaId, NotificationSeverity } from '~/common';
+import { DEFAULT_PANEL, useActivePanel } from '~/Providers';
 import { useArchiveConvoMutation } from '~/data-provider';
 import { useHasAccess, useLocalize } from '~/hooks';
 import { clearMessagesCache } from '~/utils';
@@ -432,6 +433,7 @@ export function useShortcutActions(): ShortcutAction[] {
   const routeConvoId = routeMatch?.params.conversationId ?? null;
   const conversation = useRecoilValue(store.conversationByIndex(0));
   const isSubmitting = useRecoilValue(store.isSubmittingFamily(0));
+  const { active: activePanel, setActive: setActivePanel } = useActivePanel();
   const [sidebarExpanded, setSidebarExpanded] = useRecoilState(store.sidebarExpanded);
   const setShowShortcutsDialog = useSetRecoilState(store.showShortcutsDialog);
   const setIsTemporary = useSetRecoilState(store.isTemporary);
@@ -486,17 +488,9 @@ export function useShortcutActions(): ShortcutAction[] {
       return true;
     };
 
-    const panelButton = document.querySelector<HTMLButtonElement>(
-      '[data-testid="nav-panel-conversations"]',
-    );
-    let switchedPanel = false;
-    if (
-      panelButton &&
-      !isUnavailableElement(panelButton) &&
-      panelButton.getAttribute('aria-pressed') !== 'true'
-    ) {
-      switchedPanel = true;
-      panelButton.click();
+    const switchedPanel = activePanel !== DEFAULT_PANEL;
+    if (switchedPanel) {
+      setActivePanel(DEFAULT_PANEL);
     }
 
     if (!sidebarExpanded) {
@@ -509,7 +503,7 @@ export function useShortcutActions(): ShortcutAction[] {
     }
 
     return focusSearchInput();
-  }, [sidebarExpanded, setSidebarExpanded]);
+  }, [activePanel, setActivePanel, sidebarExpanded, setSidebarExpanded]);
 
   const handleCopyLastResponse = useCallback(() => {
     return clickLastElement('[data-testid="copy-response-button"]');
@@ -686,34 +680,19 @@ export function useShortcutActions(): ShortcutAction[] {
 
   const handleOpenPanel = useCallback(
     (panelId: string) => {
-      const activatePanel = () => {
-        const btn = document.querySelector<HTMLButtonElement>(
-          `[data-testid="nav-panel-${panelId}"]`,
-        );
-        if (!btn || isUnavailableElement(btn)) {
-          return false;
-        }
-        if (btn.getAttribute('aria-pressed') !== 'true') {
-          btn.click();
-          return true;
-        }
-        return false;
-      };
-
-      const btn = document.querySelector<HTMLButtonElement>(`[data-testid="nav-panel-${panelId}"]`);
-      if (!btn || isUnavailableElement(btn)) {
-        return false;
+      const changedPanel = activePanel !== panelId;
+      if (changedPanel) {
+        setActivePanel(panelId);
       }
 
       if (!sidebarExpanded) {
         setSidebarExpanded(true);
-        setTimeout(activatePanel, 350);
         return true;
       }
 
-      return activatePanel();
+      return changedPanel;
     },
-    [sidebarExpanded, setSidebarExpanded],
+    [activePanel, setActivePanel, sidebarExpanded, setSidebarExpanded],
   );
 
   const handleOpenAssistants = useCallback(() => handleOpenPanel('assistants'), [handleOpenPanel]);

@@ -1,5 +1,6 @@
 import { useContext, useMemo } from 'react';
 import { PermissionTypes, Permissions } from 'librechat-data-provider';
+import { useGetStartupConfig } from '~/data-provider';
 import { useHasAccess, AuthContext } from '~/hooks';
 
 /**
@@ -13,6 +14,7 @@ import { useHasAccess, AuthContext } from '~/hooks';
  */
 export default function useShowMarketplace(): boolean {
   const authContext = useContext(AuthContext);
+  const { data: startupConfig } = useGetStartupConfig();
 
   const hasAccessToAgents = useHasAccess({
     permissionType: PermissionTypes.AGENTS,
@@ -32,6 +34,8 @@ export default function useShowMarketplace(): boolean {
     [authContext?.isAuthenticated, authContext?.user],
   );
 
-  // Show agent marketplace when marketplace permission is enabled, auth is ready, and user has access to agents
-  return authReady && hasAccessToAgents && hasAccessToMarketplace;
+  const marketplaceEnabled = startupConfig?.interface?.marketplace?.use === true;
+
+  // Keep the route out of the UI even if role permissions have not synchronized yet.
+  return marketplaceEnabled && authReady && hasAccessToAgents && hasAccessToMarketplace;
 }

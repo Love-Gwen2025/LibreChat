@@ -77,7 +77,7 @@
   "com_agents_mcp_description_placeholder": "Wyjaśnij, co to robi, w kilku słowach",
   "com_agents_mcp_icon_size": "Minimalny rozmiar: 128 x 128 px",
   "com_agents_mcp_name_placeholder": "Niestandardowe Narzędzie",
-  "com_agents_mcp_trust_subtext": "Niestandardowe konektory MCP nie są weryfikowane przez BmChat",
+  "com_agents_mcp_trust_subtext": "Niestandardowe konektory MCP nie są weryfikowane przez Shchat",
   "com_agents_missing_name": "Proszę wpisać nazwę przed utworzeniem agenta.",
   "com_agents_missing_provider_model": "Proszę wybrać dostawcę i model przed utworzeniem agenta.",
   "com_agents_name_placeholder": "Opcjonalnie: Nazwa agenta",

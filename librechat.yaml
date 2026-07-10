@@ -1,12 +1,14 @@
 # =============================================================================
-# BmChat 配置 (librechat.yaml)
+# Shchat 配置 (librechat.yaml)
 # =============================================================================
-version: 1.2.0
+version: 1.3.13
 
 # 界面定制
 interface:
-  customWelcome: "欢迎使用 BmChat"
-  # 不显示自定义页脚，用源码里的 BmChat 页脚
+  customWelcome: "欢迎使用 Shchat"
+  marketplace:
+    use: false
+  # 不显示自定义页脚，用源码里的 Shchat 页脚
 
 # 注册控制: 关闭自由注册，只允许邀请码注册
 registration:
@@ -14,6 +16,9 @@ registration:
 
 # 只启用 OpenAI 端点，其余全部不配置（自动隐藏）
 endpoints:
+  agents:
+    allowedProviders:
+      - "openAI"
   openAI:
     title: "OpenAI"
     models:

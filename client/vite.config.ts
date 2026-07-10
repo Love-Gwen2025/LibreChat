@@ -144,27 +144,27 @@ export default defineConfig(({ command }) => ({
         theme_color: '#009688',
         icons: [
           {
-            src: 'assets/favicon-32x32.png',
+            src: 'assets/favicon-32x32.png?v=shchat-1',
             sizes: '32x32',
             type: 'image/png',
           },
           {
-            src: 'assets/favicon-16x16.png',
+            src: 'assets/favicon-16x16.png?v=shchat-1',
             sizes: '16x16',
             type: 'image/png',
           },
           {
-            src: 'assets/apple-touch-icon-180x180.png',
+            src: 'assets/apple-touch-icon-180x180.png?v=shchat-1',
             sizes: '180x180',
             type: 'image/png',
           },
           {
-            src: 'assets/icon-192x192.png',
+            src: 'assets/icon-192x192.png?v=shchat-1',
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: 'assets/maskable-icon.png',
+            src: 'assets/maskable-icon.png?v=shchat-1',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

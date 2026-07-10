@@ -39,7 +39,7 @@ function Footer({ className, startupConfig }: FooterProps) {
   const mainContentParts = (
     typeof config?.customFooter === 'string'
       ? config.customFooter
-      : '[Shchat ' +
+      : '[ShChat ' +
         Constants.VERSION +
         '](https://chat.shuohu.com) - ' +
         localize('com_ui_latest_footer')

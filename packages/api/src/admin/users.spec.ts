@@ -52,6 +52,7 @@ function createReqRes(
 
 function createDeps(overrides: Partial<AdminUsersDeps> = {}): AdminUsersDeps {
   return {
+    findUser: jest.fn().mockResolvedValue(null),
     findUsers: jest.fn().mockResolvedValue([]),
     countUsers: jest.fn().mockResolvedValue(0),
     deleteUserById: jest
@@ -62,11 +63,188 @@ function createDeps(overrides: Partial<AdminUsersDeps> = {}): AdminUsersDeps {
     updateUser: jest.fn().mockResolvedValue(mockUser()),
     deleteConvos: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     deleteMessages: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+    registerUser: jest.fn().mockResolvedValue({ status: 200, message: 'Created' }),
     ...overrides,
   };
 }
 
 describe('createAdminUsersHandlers', () => {
+  describe('createUser', () => {
+    const validRegistration = {
+      name: '  New User  ',
+      username: '  New.User  ',
+      email: '  NEW@EXAMPLE.COM  ',
+      password: 'Password123!',
+      confirmPassword: 'Password123!',
+    };
+
+    it('creates a normalized, verified local USER and returns only safe fields', async () => {
+      const created = mockUser({
+        name: 'New User',
+        username: 'new.user',
+        email: 'new@example.com',
+      });
+      const findUser = jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(created);
+      const deps = createDeps({ findUser });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        body: {
+          ...validRegistration,
+          role: SystemRoles.ADMIN,
+          emailVerified: false,
+          provider: 'google',
+        },
+      });
+
+      await handlers.createUser(req, res);
+
+      expect(findUser).toHaveBeenNthCalledWith(
+        1,
+        { $or: [{ email: 'new@example.com' }, { username: 'new.user' }] },
+        '_id email username',
+      );
+      expect(deps.registerUser).toHaveBeenCalledWith(
+        {
+          name: 'New User',
+          username: 'new.user',
+          email: 'new@example.com',
+          password: validRegistration.password,
+          confirm_password: validRegistration.confirmPassword,
+        },
+        { role: SystemRoles.USER, emailVerified: true },
+      );
+      expect(findUser).toHaveBeenNthCalledWith(2, { email: 'new@example.com' }, expect.any(String));
+      expect(status).toHaveBeenCalledWith(201);
+      expect(json).toHaveBeenCalledWith({
+        user: expect.objectContaining({
+          id: created._id.toString(),
+          email: 'new@example.com',
+          username: 'new.user',
+          role: SystemRoles.USER,
+          provider: 'local',
+        }),
+      });
+      expect(json.mock.calls[0][0].user).not.toHaveProperty('password');
+    });
+
+    it('omits an empty username from the conflict query', async () => {
+      const created = mockUser({ username: '', email: 'new@example.com' });
+      const findUser = jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(created);
+      const deps = createDeps({ findUser });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status } = createReqRes({
+        body: { ...validRegistration, username: '   ' },
+      });
+
+      await handlers.createUser(req, res);
+
+      expect(findUser).toHaveBeenNthCalledWith(
+        1,
+        { $or: [{ email: 'new@example.com' }] },
+        '_id email username',
+      );
+      expect(deps.registerUser).toHaveBeenCalledWith(
+        expect.objectContaining({ username: '' }),
+        expect.any(Object),
+      );
+      expect(status).toHaveBeenCalledWith(201);
+    });
+
+    it.each([
+      {
+        field: 'email',
+        body: { ...validRegistration, username: '' },
+        query: { $or: [{ email: 'new@example.com' }] },
+      },
+      {
+        field: 'username',
+        body: { ...validRegistration, email: '' },
+        query: { $or: [{ username: 'new.user' }] },
+      },
+    ])('returns 409 for an existing $field', async ({ body, query }) => {
+      const findUser = jest.fn().mockResolvedValue(mockUser());
+      const deps = createDeps({ findUser });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({ body });
+
+      await handlers.createUser(req, res);
+
+      expect(findUser).toHaveBeenCalledWith(query, '_id email username');
+      expect(deps.registerUser).not.toHaveBeenCalled();
+      expect(status).toHaveBeenCalledWith(409);
+      expect(json).toHaveBeenCalledWith({ error: 'Email or username already exists' });
+    });
+
+    it('maps registerUser validation failures to 400', async () => {
+      const deps = createDeps({
+        registerUser: jest.fn().mockResolvedValue({ status: 404, message: 'Invalid password' }),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        body: { ...validRegistration, password: 'short', confirmPassword: 'short' },
+      });
+
+      await handlers.createUser(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error: 'Invalid password' });
+      expect(deps.findUser).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves non-validation failures returned by registerUser', async () => {
+      const deps = createDeps({
+        registerUser: jest.fn().mockResolvedValue({ status: 403, message: 'Domain not allowed' }),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({ body: validRegistration });
+
+      await handlers.createUser(req, res);
+
+      expect(status).toHaveBeenCalledWith(403);
+      expect(json).toHaveBeenCalledWith({ error: 'Domain not allowed' });
+    });
+
+    it('returns 409 when registration detects a concurrent email conflict', async () => {
+      const deps = createDeps({
+        registerUser: jest.fn().mockResolvedValue({
+          status: 200,
+          message: 'Please check your email',
+          created: false,
+        }),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({ body: validRegistration });
+
+      await handlers.createUser(req, res);
+
+      expect(deps.findUser).toHaveBeenCalledTimes(1);
+      expect(status).toHaveBeenCalledWith(409);
+      expect(json).toHaveBeenCalledWith({ error: 'Email or username already exists' });
+    });
+
+    it('returns 500 when the created user cannot be retrieved', async () => {
+      const handlers = createAdminUsersHandlers(createDeps());
+      const { req, res, status, json } = createReqRes({ body: validRegistration });
+
+      await handlers.createUser(req, res);
+
+      expect(status).toHaveBeenCalledWith(500);
+      expect(json).toHaveBeenCalledWith({ error: 'Failed to create user' });
+    });
+
+    it('returns a generic 500 response when a dependency throws', async () => {
+      const deps = createDeps({ findUser: jest.fn().mockRejectedValue(new Error('db down')) });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({ body: validRegistration });
+
+      await handlers.createUser(req, res);
+
+      expect(deps.registerUser).not.toHaveBeenCalled();
+      expect(status).toHaveBeenCalledWith(500);
+      expect(json).toHaveBeenCalledWith({ error: 'Failed to create user' });
+    });
+  });
+
   describe('listUsers', () => {
     it('returns paginated users with total count', async () => {
       const users = [

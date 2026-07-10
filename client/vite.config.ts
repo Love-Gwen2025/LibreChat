@@ -137,8 +137,8 @@ export default defineConfig(({ command }) => ({
       },
       includeAssets: [],
       manifest: {
-        name: 'Shchat',
-        short_name: 'Shchat',
+        name: 'ShChat',
+        short_name: 'ShChat',
         display: 'standalone',
         background_color: '#000000',
         theme_color: '#009688',

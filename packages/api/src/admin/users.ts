@@ -19,7 +19,39 @@ const MAX_SEARCH_LENGTH = 200;
 
 const USER_LIST_FIELDS = '_id name username email avatar role provider createdAt updatedAt';
 
+type RegisterUserResult = {
+  status: number;
+  message: string;
+  created?: boolean;
+};
+
+function mapUserListItem(user: IUser): AdminUserListItem {
+  return {
+    id: user._id?.toString() ?? '',
+    name: user.name ?? '',
+    username: user.username ?? '',
+    email: user.email ?? '',
+    avatar: user.avatar ?? '',
+    role: user.role ?? SystemRoles.USER,
+    provider: user.provider ?? 'local',
+    createdAt: user.createdAt?.toISOString(),
+    updatedAt: user.updatedAt?.toISOString(),
+  };
+}
+
+function normalizeText(value: unknown): unknown {
+  return typeof value === 'string' ? value.trim() : value;
+}
+
+function normalizeIdentity(value: unknown): unknown {
+  return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
+
 export interface AdminUsersDeps {
+  findUser: (
+    searchCriteria: FilterQuery<IUser>,
+    fieldsToSelect?: string | string[] | null,
+  ) => Promise<IUser | null>;
   findUsers: (
     searchCriteria: FilterQuery<IUser>,
     fieldsToSelect?: string | string[] | null,
@@ -45,17 +77,23 @@ export interface AdminUsersDeps {
   /** Removes the user's conversations and their messages. Throws when the user has none. */
   deleteConvos: (user: string, filter: FilterQuery<IConversation>) => Promise<unknown>;
   deleteMessages: (filter: FilterQuery<IMessage>) => Promise<unknown>;
+  registerUser: (
+    user: Record<string, unknown>,
+    additionalData?: Partial<IUser>,
+  ) => Promise<RegisterUserResult>;
 }
 
 const ASSIGNABLE_ROLES: ReadonlySet<string> = new Set([SystemRoles.USER, SystemRoles.ADMIN]);
 
 export function createAdminUsersHandlers(deps: AdminUsersDeps): {
+  createUser: (req: ServerRequest, res: Response) => Promise<Response>;
   listUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   searchUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   deleteUser: (req: ServerRequest, res: Response) => Promise<Response>;
   updateUserRole: (req: ServerRequest, res: Response) => Promise<Response>;
 } {
   const {
+    findUser,
     findUsers,
     countUsers,
     deleteUserById,
@@ -64,6 +102,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     updateUser,
     deleteConvos,
     deleteMessages,
+    registerUser,
   } = deps;
 
   /** Mirrors the self-delete cascade order: messages first, then conversations. */
@@ -84,22 +123,70 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
         countUsers(),
       ]);
 
-      const mapped: AdminUserListItem[] = users.map((u) => ({
-        id: u._id?.toString() ?? '',
-        name: u.name ?? '',
-        username: u.username ?? '',
-        email: u.email ?? '',
-        avatar: u.avatar ?? '',
-        role: u.role ?? 'USER',
-        provider: u.provider ?? 'local',
-        createdAt: u.createdAt?.toISOString(),
-        updatedAt: u.updatedAt?.toISOString(),
-      }));
+      const mapped = users.map(mapUserListItem);
 
       return res.status(200).json({ users: mapped, total, limit, offset });
     } catch (error) {
       logger.error('[adminUsers] listUsers error:', error);
       return res.status(500).json({ error: 'Failed to list users' });
+    }
+  }
+
+  async function createUserHandler(req: ServerRequest, res: Response) {
+    try {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const email = normalizeIdentity(body.email);
+      const username = normalizeIdentity(body.username);
+      const registration = {
+        name: normalizeText(body.name),
+        username,
+        email,
+        password: body.password,
+        confirm_password: body.confirmPassword,
+      };
+
+      const conflicts: FilterQuery<IUser>[] = [];
+      if (typeof email === 'string' && email.length > 0) {
+        conflicts.push({ email });
+      }
+      if (typeof username === 'string' && username.length > 0) {
+        conflicts.push({ username });
+      }
+
+      if (conflicts.length > 0) {
+        const existing = await findUser({ $or: conflicts }, '_id email username');
+        if (existing) {
+          return res.status(409).json({ error: 'Email or username already exists' });
+        }
+      }
+
+      const result = await registerUser(registration, {
+        role: SystemRoles.USER,
+        emailVerified: true,
+      });
+      if (result.status !== 200) {
+        const status = result.status === 404 ? 400 : result.status;
+        return res.status(status).json({ error: result.message });
+      }
+      if (result.created === false) {
+        return res.status(409).json({ error: 'Email or username already exists' });
+      }
+
+      if (typeof email !== 'string') {
+        logger.error('[adminUsers] registerUser succeeded without a normalized email');
+        return res.status(500).json({ error: 'Failed to create user' });
+      }
+
+      const created = await findUser({ email }, USER_LIST_FIELDS);
+      if (!created) {
+        logger.error('[adminUsers] created user could not be retrieved');
+        return res.status(500).json({ error: 'Failed to create user' });
+      }
+
+      return res.status(201).json({ user: mapUserListItem(created) });
+    } catch (error) {
+      logger.error('[adminUsers] createUser error:', error);
+      return res.status(500).json({ error: 'Failed to create user' });
     }
   }
 
@@ -255,6 +342,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
   }
 
   return {
+    createUser: createUserHandler,
     listUsers: listUsersHandler,
     searchUsers: searchUsersHandler,
     deleteUser: deleteUserHandler,

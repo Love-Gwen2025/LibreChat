@@ -226,7 +226,7 @@ const sendVerificationEmail = async (user) => {
     email: user.email,
     subject: 'Verify your email',
     payload: {
-      appName: process.env.APP_TITLE || 'Shchat',
+      appName: process.env.APP_TITLE || 'ShChat',
       name: user.name || user.username || user.email,
       verificationLink: verificationLink,
       year: new Date().getFullYear(),
@@ -325,15 +325,20 @@ const verifyEmail = async (req) => {
  * Register a new user.
  * @param {IUser} user <email, password, name, username>
  * @param {Partial<IUser>} [additionalData={}] Trusted server-provided fields, such as CLI overrides.
- * @returns {Promise<{status: number, message: string, user?: IUser}>}
+ * @returns {Promise<{status: number, message: string, created?: boolean}>}
  */
 const registerUser = async (user, additionalData = {}) => {
+  const safeRequestParams = {
+    email: user?.email,
+    username: user?.username,
+    name: user?.name,
+  };
   const result = registerSchema.safeParse(user);
   if (!result.success) {
     const errorMessage = errorsToString(result.error.errors);
     logger.info(
       'Route: register - Validation Error',
-      { name: 'Request params:', value: user },
+      { name: 'Request params:', value: safeRequestParams },
       { name: 'Validation error:', value: errorMessage },
     );
 
@@ -359,13 +364,13 @@ const registerUser = async (user, additionalData = {}) => {
     if (existingUser) {
       logger.info(
         'Register User - Email in use',
-        { name: 'Request params:', value: user },
+        { name: 'Request params:', value: safeRequestParams },
         { name: 'Existing user:', value: existingUser },
       );
 
       // Sleep for 1 second
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      return { status: 200, message: genericVerificationMessage };
+      return { status: 200, message: genericVerificationMessage, created: false };
     }
 
     //determine if this is the first registered user (not counting anonymous_user)
@@ -398,7 +403,7 @@ const registerUser = async (user, additionalData = {}) => {
       await updateUser(newUserId, { emailVerified: true });
     }
 
-    return { status: 200, message: genericVerificationMessage };
+    return { status: 200, message: genericVerificationMessage, created: true };
   } catch (err) {
     logger.error('[registerUser] Error in registering user:', err);
     if (newUserId) {
@@ -491,7 +496,7 @@ const requestPasswordReset = async (req) => {
       email: user.email,
       subject: 'Password Reset Request',
       payload: {
-        appName: process.env.APP_TITLE || 'Shchat',
+        appName: process.env.APP_TITLE || 'ShChat',
         name: user.name || user.username || user.email,
         link: link,
         year: new Date().getFullYear(),
@@ -542,7 +547,7 @@ const resetPassword = async (userId, token, password) => {
       email: user.email,
       subject: 'Password Reset Successfully',
       payload: {
-        appName: process.env.APP_TITLE || 'Shchat',
+        appName: process.env.APP_TITLE || 'ShChat',
         name: user.name || user.username || user.email,
         year: new Date().getFullYear(),
       },
@@ -874,7 +879,7 @@ const resendVerificationEmail = async (req) => {
       email: user.email,
       subject: 'Verify your email',
       payload: {
-        appName: process.env.APP_TITLE || 'Shchat',
+        appName: process.env.APP_TITLE || 'ShChat',
         name: user.name || user.username || user.email,
         verificationLink: verificationLink,
         year: new Date().getFullYear(),

@@ -448,6 +448,7 @@ describe('registerUser', () => {
     const result = await registerUser({ ...registrationPayload, provider: 'google' });
 
     expect(result.status).toBe(200);
+    expect(result.created).toBe(true);
     expect(createUser.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         email: registrationPayload.email,
@@ -470,6 +471,15 @@ describe('registerUser', () => {
         provider: 'google',
       }),
     );
+  });
+
+  it('reports when an existing account prevented creation to trusted callers', async () => {
+    findUser.mockResolvedValue({ _id: 'existing-user-id', email: registrationPayload.email });
+
+    const result = await registerUser(registrationPayload);
+
+    expect(result).toEqual(expect.objectContaining({ status: 200, created: false }));
+    expect(createUser).not.toHaveBeenCalled();
   });
 });
 

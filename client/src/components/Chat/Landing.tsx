@@ -76,9 +76,11 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
 
   const brandedSpecLabel = modelSpec?.showOnLanding ? modelSpec.label : '';
   const brandedSpecDescription = (modelSpec?.showOnLanding && modelSpec.description) || '';
-  const name = entity?.name ?? brandedSpecLabel;
+  const showIconOnLanding = modelSpec?.showIconOnLanding !== false;
+  const showAgentContactOnLanding = modelSpec?.showAgentContactOnLanding !== false;
+  const name = brandedSpecLabel || entity?.name;
   const description =
-    (entity?.description || brandedSpecDescription || conversation?.greeting) ?? '';
+    (brandedSpecDescription || entity?.description || conversation?.greeting) ?? '';
   const descriptionIsHTML = description.trim().startsWith('<');
 
   const sanitizeDescription = useMemo(
@@ -173,27 +175,31 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
         <div
           className={`flex ${textHasMultipleLines ? 'flex-col' : 'flex-col md:flex-row'} items-center justify-center gap-2`}
         >
-          <div className={`relative size-10 justify-center ${textHasMultipleLines ? 'mb-2' : ''}`}>
-            <ConvoIcon
-              agentsMap={agentsMap}
-              assistantMap={assistantMap}
-              conversation={conversation}
-              endpointsConfig={endpointsConfig}
-              containerClassName={containerClassName}
-              context="landing"
-              className="h-2/3 w-2/3 text-black dark:text-white"
-              size={41}
-            />
-            {startupConfig?.showBirthdayIcon && (
-              <TooltipAnchor
-                className="absolute bottom-[27px] right-2"
-                description={localize('com_ui_happy_birthday')}
-                aria-label={localize('com_ui_happy_birthday')}
-              >
-                <BirthdayIcon />
-              </TooltipAnchor>
-            )}
-          </div>
+          {showIconOnLanding && (
+            <div
+              className={`relative size-10 justify-center ${textHasMultipleLines ? 'mb-2' : ''}`}
+            >
+              <ConvoIcon
+                agentsMap={agentsMap}
+                assistantMap={assistantMap}
+                conversation={conversation}
+                endpointsConfig={endpointsConfig}
+                containerClassName={containerClassName}
+                context="landing"
+                className="h-2/3 w-2/3 text-black dark:text-white"
+                size={41}
+              />
+              {startupConfig?.showBirthdayIcon && (
+                <TooltipAnchor
+                  className="absolute bottom-[27px] right-2"
+                  description={localize('com_ui_happy_birthday')}
+                  aria-label={localize('com_ui_happy_birthday')}
+                >
+                  <BirthdayIcon />
+                </TooltipAnchor>
+              )}
+            </div>
+          )}
           {((isAgent || isAssistant) && name) || name ? (
             <div className="flex flex-col items-center gap-0 p-2">
               <SplitText
@@ -237,7 +243,7 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
               {description}
             </div>
           ))}
-        {selectedAgent && (
+        {selectedAgent && showAgentContactOnLanding && (
           <AgentContact
             agent={selectedAgent}
             className="animate-fadeIn mt-2 max-w-md justify-center text-center text-sm"

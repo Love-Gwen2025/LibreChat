@@ -6,6 +6,7 @@ import Landing from '../Landing';
 let mockConversation: Record<string, unknown> | null = null;
 let mockAgentsMap: Record<string, any> | undefined;
 let mockAssistantMap: Record<string, any> | undefined;
+let mockModelSpec: Record<string, any> | undefined;
 
 jest.mock('@react-spring/web', () => ({
   easings: {
@@ -63,7 +64,7 @@ jest.mock('~/utils', () => ({
   cn: (...classes: string[]) => classes.filter(Boolean).join(' '),
   createConfigHtmlSanitizer: () => (html: string) => html,
   getIconEndpoint: ({ endpoint }: { endpoint: string }) => endpoint,
-  getModelSpec: () => undefined,
+  getModelSpec: () => mockModelSpec,
   getEntity: ({
     endpoint,
     agentsMap,
@@ -94,6 +95,7 @@ describe('Landing agent contact', () => {
     mockConversation = null;
     mockAgentsMap = undefined;
     mockAssistantMap = undefined;
+    mockModelSpec = undefined;
   });
 
   it('shows contact for the selected agent from agentsMap', () => {
@@ -151,6 +153,38 @@ describe('Landing agent contact', () => {
     render(<Landing centerFormOnLanding={false} />);
 
     expect(screen.getByText('Assistant')).toBeInTheDocument();
+    expect(screen.queryByText('Contact:')).not.toBeInTheDocument();
+  });
+
+  it('supports a minimal model spec landing without an icon or agent contact', () => {
+    mockConversation = {
+      endpoint: 'agents',
+      agent_id: 'agent-image',
+      spec: 'image-generation',
+    };
+    mockAgentsMap = {
+      'agent-image': {
+        id: 'agent-image',
+        name: 'Image Assistant',
+        description: 'Agent description',
+        owner_contact: { name: 'Owner User', email: 'owner@example.com' },
+      },
+    };
+    mockModelSpec = {
+      name: 'image-generation',
+      label: 'Image Workspace',
+      description: 'Describe the image you want',
+      showOnLanding: true,
+      showIconOnLanding: false,
+      showAgentContactOnLanding: false,
+    };
+
+    render(<Landing centerFormOnLanding={false} />);
+
+    expect(screen.getByText('Image Workspace')).toBeInTheDocument();
+    expect(screen.getByText('Describe the image you want')).toBeInTheDocument();
+    expect(screen.queryByText('Image Assistant')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('convo-icon')).not.toBeInTheDocument();
     expect(screen.queryByText('Contact:')).not.toBeInTheDocument();
   });
 });

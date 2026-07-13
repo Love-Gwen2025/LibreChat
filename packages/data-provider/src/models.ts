@@ -35,6 +35,10 @@ export type TModelSpec = {
   showIconInHeader?: boolean;
   /** Show this spec's label and description on the chat landing in place of the greeting. */
   showOnLanding?: boolean;
+  /** Show the endpoint or agent icon beside the model spec landing title. */
+  showIconOnLanding?: boolean;
+  /** Show the selected agent's support or owner contact on the model spec landing. */
+  showAgentContactOnLanding?: boolean;
   /** Conversation starter prompts shown on the chat landing while this spec is active. */
   conversation_starters?: string[];
   /**
@@ -78,6 +82,8 @@ export const tModelSpecSchema = z.object({
   showIconInMenu: z.boolean().optional(),
   showIconInHeader: z.boolean().optional(),
   showOnLanding: z.boolean().optional(),
+  showIconOnLanding: z.boolean().optional(),
+  showAgentContactOnLanding: z.boolean().optional(),
   conversation_starters: z.array(z.string()).optional(),
   showInMenu: z.boolean().optional(),
   iconURL: z.union([z.string(), eModelEndpointSchema]).optional(),

@@ -36,11 +36,13 @@ modelSpecs:
   prioritize: true
   list:
     - name: "image-generation"
-      label: "生图助手"
-      description: "根据文字描述生成图片"
+      label: "生图工作区"
+      description: "描述你想要的画面"
       default: true
       showInMenu: true
       showOnLanding: true
+      showIconOnLanding: false
+      showAgentContactOnLanding: false
       iconURL: "agents"
       preset:
         endpoint: "agents"

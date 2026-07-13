@@ -905,6 +905,7 @@ export function createAgentMethods(
       avatar: 1,
       author: 1,
       description: 1,
+      allowed_models: 1,
       updatedAt: 1,
       category: 1,
       support_contact: 1,

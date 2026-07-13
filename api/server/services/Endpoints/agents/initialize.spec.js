@@ -7,6 +7,7 @@ const {
   MAX_SUBAGENT_DEPTH,
   MAX_SUBAGENT_GRAPH_NODES,
   Constants,
+  ViolationTypes,
 } = require('librechat-data-provider');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
@@ -138,6 +139,72 @@ describe('initializeClient — processAgent ACL gate', () => {
     tool_resources: {},
     resendFiles: true,
     maxContextTokens: 4096,
+  });
+
+  it('uses a requested model when the persisted agent allows it', async () => {
+    const endpointOption = makeEndpointOption();
+    endpointOption.model_parameters.model = 'gpt-5.4';
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'Primary',
+      provider: 'openai',
+      model: 'gpt-5.5',
+      allowed_models: ['gpt-5.5', 'gpt-5.4'],
+      tools: [],
+    });
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+
+    await initializeClient({
+      req: makeReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+
+    expect(mockValidateAgentModel).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: expect.objectContaining({ model: 'gpt-5.4' }) }),
+    );
+    expect(mockInitializeAgent.mock.calls[0][0].agent.model).toBe('gpt-5.4');
+  });
+
+  it('ignores a requested model when the persisted agent has no allowlist', async () => {
+    const endpointOption = makeEndpointOption();
+    endpointOption.model_parameters.model = 'gpt-5.4';
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+
+    await initializeClient({
+      req: makeReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+
+    expect(mockInitializeAgent.mock.calls[0][0].agent.model).toBe('gpt-4');
+  });
+
+  it('rejects a requested model outside the persisted agent allowlist', async () => {
+    const endpointOption = makeEndpointOption();
+    endpointOption.model_parameters.model = 'gpt-5.4-mini';
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'Primary',
+      provider: 'openai',
+      model: 'gpt-5.5',
+      allowed_models: ['gpt-5.5', 'gpt-5.4'],
+      tools: [],
+    });
+
+    await expect(
+      initializeClient({
+        req: makeReq(),
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      }),
+    ).rejects.toThrow(ViolationTypes.ILLEGAL_MODEL_REQUEST);
+
+    expect(mockValidateAgentModel).not.toHaveBeenCalled();
+    expect(mockInitializeAgent).not.toHaveBeenCalled();
   });
 
   it('should skip handoff agent and filter its edge when user lacks VIEW access', async () => {

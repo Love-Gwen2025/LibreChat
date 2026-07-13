@@ -3485,6 +3485,7 @@ describe('Support Contact Field', () => {
         description: 'User A agent 1',
         provider: 'openai',
         model: 'gpt-4',
+        allowed_models: ['gpt-4', 'gpt-4-mini'],
         author: userA,
       });
 
@@ -3543,6 +3544,7 @@ describe('Support Contact Field', () => {
       expect(result.data).toHaveLength(1);
       expect(result.data[0].id).toBe(agentA1.id);
       expect(result.data[0].name).toBe('Agent A1');
+      expect(result.data[0].allowed_models).toEqual(['gpt-4', 'gpt-4-mini']);
     });
 
     test('should omit skill configuration from the default list projection', async () => {

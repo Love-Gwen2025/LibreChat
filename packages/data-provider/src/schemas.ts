@@ -919,6 +919,8 @@ export const tConversationSchema = z.object({
   modelLabel: z.string().nullable().optional(),
   userLabel: z.string().optional(),
   model: z.string().nullable().optional(),
+  /** Request-scoped model selection for persisted agents with an admin allowlist. */
+  agent_model: z.string().nullable().optional(),
   promptPrefix: z.string().nullable().optional(),
   temperature: z.number().nullable().optional(),
   topP: z.number().optional(),
@@ -1315,6 +1317,7 @@ export const compactAssistantSchema = compactAssistantBaseSchema
 export const agentsBaseSchema = tConversationSchema.pick({
   chatProjectId: true,
   model: true,
+  agent_model: true,
   modelLabel: true,
   temperature: true,
   top_p: true,
@@ -1470,6 +1473,7 @@ export const compactAgentsBaseSchema = tConversationSchema.pick({
   chatProjectId: true,
   spec: true,
   // model: true,
+  agent_model: true,
   iconURL: true,
   greeting: true,
   agent_id: true,

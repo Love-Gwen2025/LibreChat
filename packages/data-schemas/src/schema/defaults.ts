@@ -15,6 +15,10 @@ export const conversationPreset: {
     type: StringConstructor;
     required: boolean;
   };
+  agent_model: {
+    type: StringConstructor;
+    required: boolean;
+  };
   // for bedrock only
   region: {
     type: StringConstructor;
@@ -198,6 +202,10 @@ export const conversationPreset: {
   },
   // for azureOpenAI, openAI only
   model: {
+    type: String,
+    required: false,
+  },
+  agent_model: {
     type: String,
     required: false,
   },

@@ -2,9 +2,25 @@ import {
   AnthropicEffort,
   googleSettings,
   anthropicSettings,
+  compactAgentsSchema,
   compactGoogleSchema,
   eAnthropicEffortSchema,
 } from './schemas';
+
+describe('compactAgentsSchema', () => {
+  it('preserves the dedicated persisted-agent model selection', () => {
+    expect(
+      compactAgentsSchema.parse({
+        agent_id: 'agent_image',
+        agent_model: 'gpt-5.4',
+        model: 'ignored-generic-model',
+      }),
+    ).toEqual({
+      agent_id: 'agent_image',
+      agent_model: 'gpt-5.4',
+    });
+  });
+});
 
 describe('anthropicSettings', () => {
   describe('maxOutputTokens.reset()', () => {

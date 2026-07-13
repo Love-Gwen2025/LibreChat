@@ -6,6 +6,7 @@ version: 1.3.13
 # 界面定制
 interface:
   customWelcome: "欢迎使用 ShChat"
+  modelSelect: false
   marketplace:
     use: false
   # 不显示自定义页脚，用源码里的 ShChat 页脚
@@ -30,10 +31,21 @@ endpoints:
     # 流式输出
     streamRate: 0
 
-# 模型预设卡片（用户可直接选择）
+# 模型预设（全局模型选择器隐藏，默认进入生图助手）
 modelSpecs:
   prioritize: true
   list:
+    - name: "image-generation"
+      label: "生图助手"
+      description: "根据文字描述生成图片"
+      default: true
+      showInMenu: true
+      showOnLanding: true
+      iconURL: "agents"
+      preset:
+        endpoint: "agents"
+        agent_id: "agent_biu_imagegen"
+        agent_model: "gpt-5.5"
     - name: "gpt-5.5"
       label: "GPT-5.5"
       description: "最新旗舰模型"

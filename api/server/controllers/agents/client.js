@@ -260,6 +260,7 @@ class AgentClient extends BaseClient {
           chatProjectId: this.options.chatProjectId,
           endpoint: this.options.endpoint,
           agent_id: this.options.agent.id,
+          agent_model: this.options.agent.model,
           modelLabel: this.options.modelLabel,
           resendFiles: this.options.resendFiles,
           imageDetail: this.options.imageDetail,

@@ -19,6 +19,7 @@ import { useGetMessagesByConvoId } from '~/data-provider';
 import ProjectLandingChip from './ProjectLandingChip';
 import MessagesView from './Messages/MessagesView';
 import Presentation from './Presentation';
+import AgentModelSwitcher from './Input/AgentModelSwitcher';
 import ChatForm from './Input/ChatForm';
 import Landing from './Landing';
 import Header from './Header';
@@ -120,6 +121,7 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
                   >
                     {isProjectLandingPage && project && <ProjectLandingChip project={project} />}
                     {isLandingPage && <ConversationStarters />}
+                    <AgentModelSwitcher />
                     <ChatForm index={index} placeholder={chatFormPlaceholder} />
                     {!isLandingPage && <Footer />}
                   </div>

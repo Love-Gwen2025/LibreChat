@@ -22,6 +22,7 @@ export interface IAgent extends Omit<Document, 'model'> {
   };
   provider: string;
   model: string;
+  allowed_models?: string[];
   model_parameters?: Record<string, unknown>;
   artifacts?: string;
   access_level?: number;

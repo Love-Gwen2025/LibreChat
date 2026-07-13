@@ -277,6 +277,8 @@ export type Agent = {
   metadata?: Record<string, unknown>;
   provider: AgentProvider;
   model: string | null;
+  /** Models that may replace `model` for a single persisted-agent conversation. */
+  allowed_models?: string[];
   model_parameters: AgentModelParameters;
   conversation_starters?: string[];
   tool_resources?: AgentToolResources;

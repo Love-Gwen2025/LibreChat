@@ -20,6 +20,7 @@ const {
   Permissions,
   ResourceType,
   EModelEndpoint,
+  ViolationTypes,
   PermissionBits,
   PermissionTypes,
   MAX_SUBAGENT_DEPTH,
@@ -100,6 +101,41 @@ function createToolLoader(signal, streamId = null, definitionsOnly = false) {
       logger.error('Error loading tools for agent ' + agentId, error);
     }
   };
+}
+
+/**
+ * Applies a conversation-level model only when the persisted agent explicitly allows it.
+ * Agents without an allowlist retain their configured model, preserving existing behavior.
+ */
+async function applyRequestedAgentModel({ req, res, agent, endpointOption }) {
+  const requestedModel = endpointOption.model_parameters?.model;
+  const allowedModels = agent.allowed_models;
+
+  if (
+    typeof requestedModel !== 'string' ||
+    requestedModel.length === 0 ||
+    requestedModel === agent.model ||
+    !Array.isArray(allowedModels) ||
+    allowedModels.length === 0
+  ) {
+    return;
+  }
+
+  if (allowedModels.includes(requestedModel)) {
+    agent.model = requestedModel;
+    return;
+  }
+
+  const { ILLEGAL_MODEL_REQ_SCORE: score = 1 } = process.env ?? {};
+  const type = ViolationTypes.ILLEGAL_MODEL_REQUEST;
+  await logViolation(
+    req,
+    res,
+    type,
+    { type, model: requestedModel, endpoint: agent.provider },
+    score,
+  );
+  throw new Error(JSON.stringify({ type, info: `${agent.provider}|${requestedModel}` }));
 }
 
 /**
@@ -307,6 +343,8 @@ const initializeClient = async ({ req, res, signal, endpointOption }) => {
   if (!primaryAgent) {
     throw new Error('Agent not found');
   }
+
+  await applyRequestedAgentModel({ req, res, agent: primaryAgent, endpointOption });
 
   const modelsConfig = await getModelsConfig(req);
   const validationResult = await validateAgentModel({

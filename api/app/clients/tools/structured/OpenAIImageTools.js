@@ -17,6 +17,7 @@ const { getFiles } = require('~/models');
 
 const displayMessage =
   "The tool displayed an image. All generated images are already plainly visible, so don't repeat the descriptions in detail. Do not list download links as they are available in the UI already. The user may download the images by clicking on them, but do not mention anything about downloading to the user.";
+const dataImageURLPattern = /^data:image\/(?:png|jpe?g|webp);base64,/i;
 
 /**
  * Replaces unwanted characters from the input string
@@ -46,6 +47,93 @@ function createAbortHandler() {
   return function () {
     logger.debug('[ImageGenOAI] Image generation aborted');
   };
+}
+
+/**
+ * Converts an OpenAI-compatible image item into a displayable URL.
+ * sub2api-compatible providers may use alternate base64 fields or return a URL.
+ * @param {Record<string, unknown>} image - Image response item
+ * @param {string} outputFormat - Requested image output format
+ * @returns {string | null} - Displayable image URL
+ */
+function getImageContentURL(image, outputFormat) {
+  if (!image || typeof image !== 'object') {
+    return null;
+  }
+
+  const base64Image = [image.b64_json, image.base64, image.image_base64].find(
+    (value) => typeof value === 'string' && value.trim(),
+  );
+  if (base64Image) {
+    const trimmedBase64 = base64Image.trim();
+    if (dataImageURLPattern.test(trimmedBase64)) {
+      return trimmedBase64;
+    }
+    const normalizedFormat = String(outputFormat || '').toLowerCase();
+    const format = Object.values(EImageOutputType).includes(normalizedFormat)
+      ? normalizedFormat
+      : EImageOutputType.PNG;
+    return `data:image/${format};base64,${trimmedBase64}`;
+  }
+
+  if (typeof image.url !== 'string' || !image.url.trim()) {
+    return null;
+  }
+
+  const imageURL = image.url.trim();
+  if (dataImageURLPattern.test(imageURL)) {
+    return imageURL;
+  }
+
+  try {
+    const parsedURL = new URL(imageURL);
+    return parsedURL.protocol === 'https:' || parsedURL.protocol === 'http:' ? imageURL : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Builds the shared agent response for generated and edited images.
+ * @param {Object} params - Result parameters
+ * @param {unknown} params.images - Image response items
+ * @param {string} params.outputFormat - Image output format
+ * @param {string[]} [params.referencedImageIds] - Source image IDs used for editing
+ * @returns {Array | null} - LangChain content-and-artifact result
+ */
+function createImageToolResult({ images, outputFormat, referencedImageIds = [] }) {
+  if (!Array.isArray(images)) {
+    return null;
+  }
+
+  const content = images
+    .map((image) => getImageContentURL(image, outputFormat))
+    .filter(Boolean)
+    .map((url) => ({
+      type: ContentTypes.IMAGE_URL,
+      image_url: { url },
+    }));
+
+  if (!content.length) {
+    return null;
+  }
+
+  const file_ids = content.map(() => v4());
+  const generatedImageIds =
+    file_ids.length === 1
+      ? `generated_image_id: "${file_ids[0]}"`
+      : `generated_image_ids: ${JSON.stringify(file_ids)}`;
+  const referencedIds = referencedImageIds.length
+    ? `\nreferenced_image_ids: ${JSON.stringify(referencedImageIds)}`
+    : '';
+  const response = [
+    {
+      type: ContentTypes.TEXT,
+      text: `${displayMessage}\n\n${generatedImageIds}${referencedIds}`,
+    },
+  ];
+
+  return [response, { content, file_ids }];
 }
 
 /**
@@ -85,9 +173,11 @@ function createOpenAIImageTools(fields = {}) {
   const imageModel = process.env.IMAGE_GEN_OAI_MODEL || 'gpt-image-1';
 
   let baseURL = 'https://api.openai.com/v1/';
+  let responseFormat;
   if (!override && process.env.IMAGE_GEN_OAI_BASEURL) {
     baseURL = extractBaseURL(process.env.IMAGE_GEN_OAI_BASEURL);
     closureConfig.baseURL = baseURL;
+    responseFormat = 'b64_json';
   }
 
   // Note: Azure may not yet support the latest image generation models
@@ -104,6 +194,7 @@ function createOpenAIImageTools(fields = {}) {
       'Content-Type': 'application/json',
     };
     closureConfig.apiKey = process.env.IMAGE_GEN_OAI_API_KEY;
+    responseFormat = undefined;
   }
 
   const imageFiles = fields.imageFiles ?? [];
@@ -167,6 +258,7 @@ function createOpenAIImageTools(fields = {}) {
             prompt: replaceUnwantedChars(prompt),
             n: Math.min(Math.max(1, n), 10),
             background,
+            ...(responseFormat ? { response_format: responseFormat } : {}),
             output_format,
             output_compression:
               output_format === EImageOutputType.WEBP || output_format === EImageOutputType.JPEG
@@ -196,33 +288,25 @@ Error Message: ${error.message}`);
         );
       }
 
-      // For gpt-image-1, the response contains base64-encoded images
       // TODO: handle cost in `resp.usage`
-      const base64Image = resp.data[0].b64_json;
+      const imageResult = createImageToolResult({
+        images: resp.data,
+        outputFormat: resp.output_format || output_format,
+      });
 
-      if (!base64Image) {
+      if (!imageResult) {
+        logger.warn('[ImageGenOAI] No supported image data in response', {
+          dataCount: Array.isArray(resp.data) ? resp.data.length : 0,
+          imageFields:
+            Array.isArray(resp.data) && resp.data[0] && typeof resp.data[0] === 'object'
+              ? Object.keys(resp.data[0])
+              : [],
+        });
         return returnValue(
           'No image data returned from OpenAI API. There may be a problem with the API or your configuration.',
         );
       }
-
-      const content = [
-        {
-          type: ContentTypes.IMAGE_URL,
-          image_url: {
-            url: `data:image/${output_format};base64,${base64Image}`,
-          },
-        },
-      ];
-
-      const file_ids = [v4()];
-      const response = [
-        {
-          type: ContentTypes.TEXT,
-          text: displayMessage + `\n\ngenerated_image_id: "${file_ids[0]}"`,
-        },
-      ];
-      return [response, { content, file_ids }];
+      return imageResult;
     },
     oaiToolkit.image_gen_oai,
   );
@@ -252,6 +336,10 @@ Error Message: ${error.message}`);
       // formData.append('n', n.toString());
       formData.append('quality', quality);
       formData.append('size', size);
+      if (responseFormat) {
+        formData.append('response_format', responseFormat);
+      }
+      formData.append('output_format', imageOutputType);
 
       /** @type {Record<FileSources, undefined | NodeStreamDownloader<File>>} */
       const streamMethods = {};
@@ -363,38 +451,26 @@ Error Message: ${error.message}`);
         }
         const response = await axios.post('/images/edits', formData, axiosConfig);
 
-        if (!response.data || !response.data.data || !response.data.data.length) {
+        const imageResult = createImageToolResult({
+          images: response.data?.data,
+          outputFormat: response.data?.output_format || imageOutputType,
+          referencedImageIds: image_ids,
+        });
+        if (!imageResult) {
+          logger.warn('[ImageEditOAI] No supported image data in response', {
+            dataCount: Array.isArray(response.data?.data) ? response.data.data.length : 0,
+            imageFields:
+              Array.isArray(response.data?.data) &&
+              response.data.data[0] &&
+              typeof response.data.data[0] === 'object'
+                ? Object.keys(response.data.data[0])
+                : [],
+          });
           return returnValue(
             'No image data returned from OpenAI API. There may be a problem with the API or your configuration.',
           );
         }
-
-        const base64Image = response.data.data[0].b64_json;
-        if (!base64Image) {
-          return returnValue(
-            'No image data returned from OpenAI API. There may be a problem with the API or your configuration.',
-          );
-        }
-
-        const content = [
-          {
-            type: ContentTypes.IMAGE_URL,
-            image_url: {
-              url: `data:image/${imageOutputType};base64,${base64Image}`,
-            },
-          },
-        ];
-
-        const file_ids = [v4()];
-        const textResponse = [
-          {
-            type: ContentTypes.TEXT,
-            text:
-              displayMessage +
-              `\n\ngenerated_image_id: "${file_ids[0]}"\nreferenced_image_ids: ["${image_ids.join('", "')}"]`,
-          },
-        ];
-        return [textResponse, { content, file_ids }];
+        return imageResult;
       } catch (error) {
         const message = '[image_edit_oai] Problem editing the image:';
         logAxiosError({ error, message });

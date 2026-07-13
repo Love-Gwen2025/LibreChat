@@ -1,6 +1,9 @@
+const axios = require('axios');
 const OpenAI = require('openai');
+const { ContentTypes } = require('librechat-data-provider');
 const createOpenAIImageTools = require('~/app/clients/tools/structured/OpenAIImageTools');
 
+jest.mock('axios');
 jest.mock('openai');
 jest.mock('@librechat/data-schemas', () => ({
   logger: {
@@ -45,6 +48,7 @@ describe('OpenAIImageTools - IMAGE_GEN_OAI_MODEL environment variable', () => {
     originalEnv = { ...process.env };
 
     process.env.IMAGE_GEN_OAI_API_KEY = 'test-api-key';
+    process.env.IMAGE_GEN_OAI_BASEURL = 'https://images.example.com/v1';
 
     OpenAI.mockImplementation(() => ({
       images: {
@@ -91,6 +95,7 @@ describe('OpenAIImageTools - IMAGE_GEN_OAI_MODEL environment variable', () => {
     expect(mockGenerate).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'gpt-image-1',
+        response_format: 'b64_json',
       }),
       expect.any(Object),
     );
@@ -160,5 +165,115 @@ describe('OpenAIImageTools - IMAGE_GEN_OAI_MODEL environment variable', () => {
       }),
       expect.any(Object),
     );
+  });
+
+  it('does not send the compatibility response format to the native OpenAI endpoint', async () => {
+    delete process.env.IMAGE_GEN_OAI_BASEURL;
+    const mockGenerate = jest.fn().mockResolvedValue({
+      data: [{ b64_json: 'base64-encoded-image-data' }],
+    });
+    OpenAI.mockImplementation(() => ({
+      images: { generate: mockGenerate },
+    }));
+
+    const [imageGenTool] = createOpenAIImageTools({
+      isAgent: true,
+      override: false,
+      req: { user: { id: 'test-user' } },
+    });
+
+    await imageGenTool.func({ prompt: 'test prompt' });
+
+    expect(mockGenerate.mock.calls[0][0]).not.toHaveProperty('response_format');
+  });
+
+  it('supports URL image responses from OpenAI-compatible providers', async () => {
+    const imageURL = 'https://cdn.example.com/generated.png';
+    OpenAI.mockImplementation(() => ({
+      images: {
+        generate: jest.fn().mockResolvedValue({
+          data: [{ url: imageURL }],
+        }),
+      },
+    }));
+
+    const [imageGenTool] = createOpenAIImageTools({
+      isAgent: true,
+      override: false,
+      req: { user: { id: 'test-user' } },
+    });
+
+    const [, artifact] = await imageGenTool.func({ prompt: 'test prompt' });
+
+    expect(artifact.content).toEqual([
+      {
+        type: ContentTypes.IMAGE_URL,
+        image_url: { url: imageURL },
+      },
+    ]);
+    expect(artifact.file_ids).toHaveLength(1);
+  });
+
+  it('supports sub2api base64 aliases and multiple returned images', async () => {
+    OpenAI.mockImplementation(() => ({
+      images: {
+        generate: jest.fn().mockResolvedValue({
+          output_format: 'webp',
+          data: [{ base64: 'first-image' }, { image_base64: 'second-image' }],
+        }),
+      },
+    }));
+
+    const [imageGenTool] = createOpenAIImageTools({
+      isAgent: true,
+      override: false,
+      req: { user: { id: 'test-user' } },
+    });
+
+    const [response, artifact] = await imageGenTool.func({ prompt: 'test prompt', n: 2 });
+
+    expect(artifact.content).toEqual([
+      {
+        type: ContentTypes.IMAGE_URL,
+        image_url: { url: 'data:image/webp;base64,first-image' },
+      },
+      {
+        type: ContentTypes.IMAGE_URL,
+        image_url: { url: 'data:image/webp;base64,second-image' },
+      },
+    ]);
+    expect(artifact.file_ids).toHaveLength(2);
+    expect(response[0].text).toContain('generated_image_ids: [');
+  });
+
+  it('requests base64 responses for edits and accepts a URL fallback', async () => {
+    const imageURL = 'https://cdn.example.com/edited.png';
+    axios.post.mockResolvedValue({
+      data: {
+        data: [{ url: imageURL }],
+      },
+    });
+
+    const [, imageEditTool] = createOpenAIImageTools({
+      isAgent: true,
+      override: false,
+      req: { user: { id: 'test-user' } },
+    });
+
+    const [response, artifact] = await imageEditTool.func({
+      prompt: 'edit the image',
+      image_ids: ['source-image-id'],
+    });
+
+    const requestForm = axios.post.mock.calls[0][1];
+    const requestBody = requestForm.getBuffer().toString();
+    expect(requestBody).toContain('name="response_format"');
+    expect(requestBody).toContain('b64_json');
+    expect(requestBody).toContain('name="output_format"');
+    expect(artifact.content[0]).toEqual({
+      type: ContentTypes.IMAGE_URL,
+      image_url: { url: imageURL },
+    });
+    expect(response[0].text).toContain('referenced_image_ids: ["source-image-id"]');
   });
 });

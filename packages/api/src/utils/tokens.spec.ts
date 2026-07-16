@@ -1,6 +1,34 @@
 import { EModelEndpoint } from 'librechat-data-provider';
 import type { EndpointTokenConfig } from '~/types';
-import { getModelMaxTokens, getModelMaxOutputTokens } from './tokens';
+import { GPT_MAX_CONTEXT_TOKENS, getModelMaxTokens, getModelMaxOutputTokens } from './tokens';
+
+describe('GPT context safety cap', () => {
+  it.each([
+    'gpt-4.1',
+    'gpt-4.1-mini',
+    'gpt-5',
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-5.5',
+    'chat-latest',
+  ])('caps %s at 250k tokens', (model) => {
+    expect(getModelMaxTokens(model, EModelEndpoint.openAI)).toBe(GPT_MAX_CONTEXT_TOKENS);
+  });
+
+  it('does not increase GPT models with a smaller native context window', () => {
+    expect(getModelMaxTokens('gpt-4o', EModelEndpoint.openAI)).toBeLessThan(GPT_MAX_CONTEXT_TOKENS);
+  });
+
+  it('also caps an endpoint-provided GPT context override', () => {
+    const endpointTokenConfig: EndpointTokenConfig = {
+      'gpt-5.5': { prompt: 1, completion: 2, context: 1050000 },
+    };
+
+    expect(getModelMaxTokens('gpt-5.5', EModelEndpoint.openAI, endpointTokenConfig)).toBe(
+      GPT_MAX_CONTEXT_TOKENS,
+    );
+  });
+});
 
 describe('getModelMaxTokens partial-override fallback', () => {
   const partialOverride: EndpointTokenConfig = {

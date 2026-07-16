@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Providers, EModelEndpoint, isAgentsEndpoint } from 'librechat-data-provider';
 import type { TConversation, TModelTokenomics } from 'librechat-data-provider';
 import { useGetStartupConfig, useTokenConfigQuery, useGetAgentByIdQuery } from '~/data-provider';
-import { getModelSpec } from '~/utils';
+import { getModelSpec, resolveContextTokenLimit } from '~/utils';
 
 /** Gemini tokenomics are advertised under the `google` endpoint, so a
  *  Vertex-backed agent (`provider: 'vertexai'`) must look up there. */
@@ -18,15 +18,10 @@ export interface TokenLimits {
   model?: string;
 }
 
-function toNumber(value: unknown): number | undefined {
-  const num = typeof value === 'string' ? parseFloat(value) : value;
-  return typeof num === 'number' && Number.isFinite(num) && num > 0 ? num : undefined;
-}
-
 /**
  * Mirrors the backend resolution chain (packages/api agents/initialize.ts):
- * explicit conversation setting → agent params → model spec preset →
- * server-resolved token config lookup.
+ * explicit conversation setting → agent params → model spec preset, capped by
+ * the server-resolved token config for the active model.
  */
 export default function useTokenLimits(conversation: TConversation | null): TokenLimits {
   const { data: startupConfig } = useGetStartupConfig();
@@ -55,11 +50,12 @@ export default function useTokenLimits(conversation: TConversation | null): Toke
     lookupEndpoint = normalizeTokenConfigKey(lookupEndpoint);
 
     const rates = tokenConfig?.[lookupEndpoint]?.[lookupModel];
-    const maxContextTokens =
-      toNumber(maxContextSetting) ??
-      toNumber(agent?.model_parameters?.maxContextTokens) ??
-      toNumber(specPreset?.maxContextTokens) ??
-      rates?.context;
+    const maxContextTokens = resolveContextTokenLimit({
+      conversation: maxContextSetting,
+      agent: agent?.model_parameters?.maxContextTokens,
+      preset: specPreset?.maxContextTokens,
+      server: rates?.context,
+    });
 
     return { maxContextTokens, rates, endpoint: lookupEndpoint, model: lookupModel };
   }, [endpoint, model, spec, maxContextSetting, agent, startupConfig, tokenConfig]);

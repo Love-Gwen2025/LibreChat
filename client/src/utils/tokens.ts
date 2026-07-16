@@ -25,6 +25,39 @@ export const EMPTY_USAGE: BranchUsage = {
   costKnown: true,
 };
 
+type TokenLimitValue = number | string | null | undefined;
+
+function toPositiveTokenLimit(value: TokenLimitValue): number | undefined {
+  const parsed = typeof value === 'string' ? Number.parseFloat(value) : value;
+  return typeof parsed === 'number' && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+export function resolveContextTokenLimit({
+  conversation,
+  agent,
+  preset,
+  server,
+}: {
+  conversation?: TokenLimitValue;
+  agent?: TokenLimitValue;
+  preset?: TokenLimitValue;
+  server?: TokenLimitValue;
+}): number | undefined {
+  const configured =
+    toPositiveTokenLimit(conversation) ??
+    toPositiveTokenLimit(agent) ??
+    toPositiveTokenLimit(preset);
+  const serverLimit = toPositiveTokenLimit(server);
+
+  if (configured == null) {
+    return serverLimit;
+  }
+  if (serverLimit == null) {
+    return configured;
+  }
+  return Math.min(configured, serverLimit);
+}
+
 export interface TokenEntry {
   tokenCount: number;
   /** Char/4 token estimate used in place of `tokenCount`: count-less (imported /

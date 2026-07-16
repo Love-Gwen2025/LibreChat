@@ -11,6 +11,7 @@ import {
   setEntryUsage,
   sumTotalUsage,
   prunedBranchTokens,
+  resolveContextTokenLimit,
   findBranchSnapshotAnchor,
   estimateTokens,
   normalizeUsageUnits,
@@ -61,6 +62,22 @@ function responseMsg(
 
 const USAGE_A: TResponseUsage = { input: 100, output: 50, cacheWrite: 0, cacheRead: 0, cost: 0.01 };
 const USAGE_B: TResponseUsage = { input: 200, output: 80, cacheWrite: 0, cacheRead: 0, cost: 0.02 };
+
+describe('resolveContextTokenLimit', () => {
+  it('clamps a stale conversation value to the server-resolved model limit', () => {
+    expect(resolveContextTokenLimit({ conversation: 997500, server: 250000 })).toBe(250000);
+  });
+
+  it('preserves a lower configured limit', () => {
+    expect(resolveContextTokenLimit({ conversation: 120000, server: 250000 })).toBe(120000);
+  });
+
+  it('falls back through agent and preset values when no conversation value exists', () => {
+    expect(resolveContextTokenLimit({ agent: 180000, preset: 200000, server: 250000 })).toBe(
+      180000,
+    );
+  });
+});
 
 describe('token index', () => {
   afterEach(() => {

@@ -2,7 +2,7 @@ import React from 'react';
 import { DndProvider } from 'react-dnd';
 import { BrowserRouter } from 'react-router-dom';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { render, act, waitFor } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { atom, RecoilRoot, useRecoilValue, useSetRecoilState } from 'recoil';
 import type { SetterOrUpdater } from 'recoil';
@@ -137,18 +137,13 @@ describe('ConversationsSection streaming re-renders', () => {
     });
   });
 
-  it('does not re-render FavoritesList or BookmarkNav when the section re-renders mid-stream', async () => {
+  it('keeps FavoritesList stable and does not mount bookmark filtering', () => {
     renderSection();
 
-    // BookmarkNav is lazy-loaded; wait until it has actually rendered (its own
-    // data hook firing is the deterministic signal that the chunk resolved).
-    await waitFor(() => expect(mockUseGetConversationTags).toHaveBeenCalled());
-
     expect(mockUseFavorites.mock.calls.length).toBeGreaterThan(0);
-    expect(mockUseGetConversationTags.mock.calls.length).toBeGreaterThan(0);
+    expect(mockUseGetConversationTags).not.toHaveBeenCalled();
 
     const favBaseline = mockUseFavorites.mock.calls.length;
-    const tagBaseline = mockUseGetConversationTags.mock.calls.length;
     const titleBaseline = mockUseTitleGeneration.mock.calls.length;
 
     // Simulate a stream: repeatedly re-render ConversationsSection.
@@ -163,6 +158,6 @@ describe('ConversationsSection streaming re-renders', () => {
 
     // The memoized children, fed referentially stable props, did not re-render.
     expect(mockUseFavorites.mock.calls.length).toBe(favBaseline);
-    expect(mockUseGetConversationTags.mock.calls.length).toBe(tagBaseline);
+    expect(mockUseGetConversationTags).not.toHaveBeenCalled();
   });
 });

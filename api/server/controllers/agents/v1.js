@@ -13,6 +13,9 @@ const {
   collectToolResourceFileIds,
   convertOcrToContextInPlace,
   stripFileIdsFromToolResources,
+  getBuiltinImageAgentId,
+  getBuiltinImageAgentModels,
+  getEffectiveAgentModels,
 } = require('@librechat/api');
 const {
   Time,
@@ -67,6 +70,17 @@ const getSafeModelParameters = (modelParameters) => {
   return typeof useResponsesApi === 'boolean' ? { useResponsesApi } : {};
 };
 const hasEditBit = (permission) => (permission & PermissionBits.EDIT) === PermissionBits.EDIT;
+
+const applyUserModelScope = (req, agent) => {
+  const imageAgentId = getBuiltinImageAgentId(req.config);
+  if (imageAgentId && agent?.id === imageAgentId) {
+    agent.allowed_models = getEffectiveAgentModels(
+      getBuiltinImageAgentModels(agent.allowed_models),
+      req.user?.allowedAgentModels,
+    );
+  }
+  return agent;
+};
 
 const sanitizeViewerSkillScope = (agent, accessibleSkillSet) => {
   const skillScopeEnabled = agent.skills_enabled === true;
@@ -508,6 +522,7 @@ const getAgentHandler = async (req, res, expandProperties = false) => {
     }
 
     agent.author = agent.author.toString();
+    applyUserModelScope(req, agent);
 
     // Check if agent is public
     const isPublic = await hasPublicPermission({
@@ -1108,7 +1123,7 @@ const getListAgentsHandler = async (req, res) => {
         // Silently ignore mapping errors
         void e;
       }
-      return agent;
+      return applyUserModelScope(req, agent);
     });
 
     return res.json(data);

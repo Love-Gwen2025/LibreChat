@@ -227,6 +227,8 @@ export type AdminUserListItem = {
   avatar: string;
   role: string;
   provider: string;
+  isDisabled: boolean;
+  allowedAgentModels?: string[];
   createdAt?: string;
   updatedAt?: string;
 };
@@ -238,4 +240,43 @@ export type AdminUserSearchResult = {
   email: string;
   username?: string;
   avatarUrl?: string;
+};
+
+export type AdminTokenUsageDay = {
+  date: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
+export type AdminUserTokenUsage = {
+  totalTokens: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  todayTokens: number;
+  daily: AdminTokenUsageDay[];
+  timezone: string;
+  start: string;
+  end: string;
+};
+
+export type AdminImageGenerationTask = {
+  id: string;
+  taskId: string;
+  conversationId: string;
+  responseMessageId?: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  agentId: string;
+  model: string;
+  status: import('./imageGenerationTask').ImageGenerationTaskStatus;
+  promptPreview: string;
+  imageCount: number;
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string;
+  error?: string;
 };

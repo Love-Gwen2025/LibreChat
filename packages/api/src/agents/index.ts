@@ -10,6 +10,7 @@ export * from './discovery';
 export * from './edges';
 export * from './handlers';
 export * from './initialize';
+export * from './imageAgent';
 export * from './legacy';
 export * from './memory';
 export * from './orphans';

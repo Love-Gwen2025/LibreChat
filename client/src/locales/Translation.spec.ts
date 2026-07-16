@@ -8,6 +8,7 @@ import {
   normalizeLocale,
 } from './i18n';
 import English from './en/translation.json';
+import SimplifiedChinese from './zh-Hans/translation.json';
 import Spanish from './es/translation.json';
 import French from './fr/translation.json';
 import { TranslationKeys } from '~/hooks';
@@ -66,6 +67,19 @@ describe('i18next translation tests', () => {
 
     await changeLanguageSafely('fr');
     expect(i18n.t('com_endpoint_default_with_num', { 0: 'Marie' })).toBe('par défaut : Marie');
+  });
+
+  it('keeps Simplified Chinese complete with matching placeholders', () => {
+    const english = English as Record<string, string>;
+    const simplifiedChinese = SimplifiedChinese as Record<string, string>;
+    const placeholderTokens = (value: string) =>
+      Array.from(value.matchAll(/\{\{[^{}]+\}\}|\{\d+\}/g), (match) => match[0]).sort();
+
+    expect(Object.keys(simplifiedChinese).sort()).toEqual(Object.keys(english).sort());
+    for (const [key, englishValue] of Object.entries(english)) {
+      expect(simplifiedChinese[key]?.trim()).toBeTruthy();
+      expect(placeholderTokens(simplifiedChinese[key])).toEqual(placeholderTokens(englishValue));
+    }
   });
 
   it('should normalize language selector values to locale files', () => {

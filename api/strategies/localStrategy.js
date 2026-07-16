@@ -2,7 +2,13 @@ const bcrypt = require('bcryptjs');
 const { logger } = require('@librechat/data-schemas');
 const { errorsToString } = require('librechat-data-provider');
 const { Strategy: PassportLocalStrategy } = require('passport-local');
-const { isEnabled, checkEmailConfig, comparePassword } = require('@librechat/api');
+const {
+  isEnabled,
+  isUserDisabled,
+  checkEmailConfig,
+  comparePassword,
+  DISABLED_USER_MESSAGE,
+} = require('@librechat/api');
 const { findUser, updateUser } = require('~/models');
 const { loginSchema } = require('./validators');
 
@@ -41,6 +47,11 @@ async function passportLogin(req, email, password, done) {
       logError('Passport Local Strategy - Password does not match', { isMatch });
       logger.error(`[Login] [Login failed] [Username: ${email}] [Request-IP: ${req.ip}]`);
       return done(null, false, { message: 'Incorrect password.' });
+    }
+
+    if (isUserDisabled(user)) {
+      logger.warn(`[Login] Disabled account rejected [Username: ${email}] [Request-IP: ${req.ip}]`);
+      return done(null, false, { message: DISABLED_USER_MESSAGE });
     }
 
     const emailEnabled = checkEmailConfig();

@@ -26,13 +26,12 @@ const {
 } = require('~/server/services/Files/process');
 const { fileAccess } = require('~/server/middleware/accessResources/fileAccess');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
-const { getOpenAIClient } = require('~/server/controllers/assistants/helpers');
 const { hasCapability } = require('~/server/middleware/roles/capabilities');
 const { checkPermission } = require('~/server/services/PermissionService');
 const { hasAccessToFilesViaAgent } = require('~/server/services/Files');
-const { cleanFileName, getContentDisposition } = require('~/server/utils/files');
+const { cleanFileName } = require('~/server/utils/files');
+const { streamStoredFile } = require('~/server/services/Files/streamStoredFile');
 const { getLogStores } = require('~/cache');
-const { Readable } = require('stream');
 const db = require('~/models');
 
 const router = express.Router();
@@ -539,72 +538,31 @@ router.get('/download/:userId/:file_id', fileAccess, async (req, res) => {
       return res.status(501).send('Not Implemented');
     }
 
-    const setHeaders = () => {
-      res.setHeader('Content-Disposition', getContentDisposition(file.filename));
-      res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader(
-        'X-File-Metadata',
-        encodeURIComponent(JSON.stringify(getDownloadFileMetadata(file))),
-      );
-    };
-
-    if (checkOpenAIStorage(file.source)) {
-      req.body = { model: file.model };
-      const endpointMap = {
-        [FileSources.openai]: EModelEndpoint.assistants,
-        [FileSources.azure]: EModelEndpoint.azureAssistants,
-      };
-      const { openai } = await getOpenAIClient({
-        req,
-        res,
-        overrideEndpoint: endpointMap[file.source],
-      });
-      logger.debug(`Downloading file ${file_id} from OpenAI`);
-      const passThrough = await getDownloadStream(file_id, openai);
-      setHeaders();
-      logger.debug(`File ${file_id} downloaded from OpenAI`);
-
-      // Handle both Node.js and Web streams
-      const stream =
-        passThrough.body && typeof passThrough.body.getReader === 'function'
-          ? Readable.fromWeb(passThrough.body)
-          : passThrough.body;
-
-      stream.pipe(res);
-    } else {
-      if (getDownloadURL && req.query.direct === 'true') {
-        try {
-          const downloadURL = await getDirectDownloadURL({ req, file });
-          if (downloadURL) {
-            res.setHeader('Cache-Control', 'no-store');
-            return res.redirect(302, downloadURL);
-          }
-        } catch (error) {
-          logger.warn(
-            '[DOWNLOAD ROUTE] Falling back to stream after URL generation failed:',
-            error,
-          );
+    if (!checkOpenAIStorage(file.source) && getDownloadURL && req.query.direct === 'true') {
+      try {
+        const downloadURL = await getDirectDownloadURL({ req, file });
+        if (downloadURL) {
+          res.setHeader('Cache-Control', 'no-store');
+          return res.redirect(302, downloadURL);
         }
+      } catch (error) {
+        logger.warn('[DOWNLOAD ROUTE] Falling back to stream after URL generation failed:', error);
       }
-
-      if (!getDownloadStream) {
-        logger.warn(
-          `File download requested by user ${userId} has no stream method implemented: ${file.source}`,
-        );
-        return res.status(501).send('Not Implemented');
-      }
-
-      const fileStream = await getDownloadStream(req, file.storageKey || file.filepath);
-
-      fileStream.on('error', (streamError) => {
-        logger.error('[DOWNLOAD ROUTE] Stream error:', streamError);
-      });
-
-      setHeaders();
-      fileStream.pipe(res);
     }
+
+    await streamStoredFile({
+      req,
+      res,
+      file,
+      headers: {
+        'X-File-Metadata': encodeURIComponent(JSON.stringify(getDownloadFileMetadata(file))),
+      },
+    });
   } catch (error) {
     logger.error('[DOWNLOAD ROUTE] Error downloading file:', error);
+    if (error?.status === 501) {
+      return res.status(501).send('Not Implemented');
+    }
     res.status(500).send('Error downloading file');
   }
 });

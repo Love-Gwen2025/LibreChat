@@ -21,6 +21,8 @@ jest.mock(
   '@librechat/api',
   () => ({
     isEnabled: jest.fn((val) => val === 'true' || val === true),
+    isUserDisabled: jest.fn((user) => user?.isDisabled === true),
+    DISABLED_USER_MESSAGE: 'This account has been disabled.',
     checkEmailConfig: jest.fn(),
     isEmailDomainAllowed: jest.fn(),
     math: jest.fn((val, fallback) => (val ? Number(val) : fallback)),
@@ -1316,6 +1318,23 @@ describe('CloudFront cookie integration', () => {
       const result = await setAuthTokens('user-123', res);
 
       expect(result).toBe('mock-access-token');
+    });
+
+    it('does not issue tokens or sessions for a disabled user', async () => {
+      getUserById.mockResolvedValueOnce({
+        _id: 'user-123',
+        tenantId: 'tenantA',
+        isDisabled: true,
+      });
+      const res = mockResponse();
+
+      await expect(setAuthTokens('user-123', res)).rejects.toThrow(
+        'This account has been disabled.',
+      );
+
+      expect(generateToken).not.toHaveBeenCalled();
+      expect(createSession).not.toHaveBeenCalled();
+      expect(setCloudFrontCookies).not.toHaveBeenCalled();
     });
   });
 });

@@ -31,6 +31,7 @@ export {
 } from './methods';
 export type * from './types';
 export type * from './methods';
+export { IMAGE_GENERATION_TASK_STATUSES } from './types/imageGenerationTask';
 export {
   AUDIT_ACTIONS,
   AUDIT_CATEGORIES,

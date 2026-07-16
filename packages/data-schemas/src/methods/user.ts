@@ -26,6 +26,7 @@ export function createUserMethods(mongoose: typeof import('mongoose')): {
     returnUser?: boolean,
   ) => Promise<mongoose.Types.ObjectId | Partial<IUser>>;
   updateUser: (userId: string, updateData: Partial<IUser>) => Promise<IUser | null>;
+  updateUserAgentModels: (userId: string, models: string[] | null) => Promise<IUser | null>;
   acceptTerms: (userId: string) => Promise<IUser | null>;
   searchUsers: ({
     searchPattern,
@@ -254,6 +255,21 @@ export function createUserMethods(mongoose: typeof import('mongoose')): {
     }).lean<IUser>();
   }
 
+  async function updateUserAgentModels(
+    userId: string,
+    models: string[] | null,
+  ): Promise<IUser | null> {
+    const User = mongoose.models.User as mongoose.Model<IUser>;
+    const update =
+      models === null
+        ? { $unset: { allowedAgentModels: '' } }
+        : { $set: { allowedAgentModels: models } };
+    return await User.findByIdAndUpdate(userId, update, {
+      new: true,
+      runValidators: true,
+    }).lean<IUser>();
+  }
+
   /**
    * Atomically records terms acceptance for a user.
    * Sets termsAccepted and, only when no timestamp is already stored, stamps
@@ -316,6 +332,9 @@ export function createUserMethods(mongoose: typeof import('mongoose')): {
   async function generateToken(user: IUser, expiresIn?: number): Promise<string> {
     if (!user) {
       throw new Error('No user provided');
+    }
+    if (user.isDisabled === true) {
+      throw new Error('Account is disabled.');
     }
 
     const expires = expiresIn ?? DEFAULT_SESSION_EXPIRY;
@@ -534,6 +553,7 @@ export function createUserMethods(mongoose: typeof import('mongoose')): {
     countUsers,
     createUser,
     updateUser,
+    updateUserAgentModels,
     acceptTerms,
     searchUsers,
     getUserById,

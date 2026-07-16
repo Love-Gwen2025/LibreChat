@@ -12,6 +12,7 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 
 const validUserId = new Types.ObjectId().toString();
+const addedImageModels = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 
 function mockUser(overrides: Partial<IUser> = {}): IUser {
   return {
@@ -41,6 +42,11 @@ function createReqRes(
     query: overrides.query ?? {},
     body: overrides.body ?? {},
     user: overrides.user ?? { _id: new Types.ObjectId(), role: 'admin' },
+    config: {
+      modelSpecs: {
+        list: [{ name: 'image-generation', preset: { agent_id: 'agent-image' } }],
+      },
+    },
   } as unknown as ServerRequest;
 
   const json = jest.fn();
@@ -61,6 +67,16 @@ function createDeps(overrides: Partial<AdminUsersDeps> = {}): AdminUsersDeps {
     deleteConfig: jest.fn().mockResolvedValue(null),
     deleteAclEntries: jest.fn().mockResolvedValue(undefined),
     updateUser: jest.fn().mockResolvedValue(mockUser()),
+    updateUserAgentModels: jest.fn().mockResolvedValue(mockUser()),
+    deleteAllUserSessions: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+    getAgent: jest.fn().mockResolvedValue({
+      id: 'agent-image',
+      provider: 'openai',
+      allowed_models: ['gpt-image-a', 'gpt-image-b'],
+    }),
+    getModelsConfig: jest.fn().mockResolvedValue({
+      openAI: ['gpt-image-a', 'gpt-image-b', ...addedImageModels],
+    }),
     deleteConvos: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     deleteMessages: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     registerUser: jest.fn().mockResolvedValue({ status: 200, message: 'Created' }),
@@ -838,6 +854,149 @@ describe('createAdminUsersHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(400);
       expect(json).toHaveBeenCalledWith({ error: 'Invalid user ID format' });
+    });
+  });
+
+  describe('updateUserStatus', () => {
+    it('disables a member and revokes all of their sessions', async () => {
+      const target = mockUser({ _id: new Types.ObjectId(validUserId), isDisabled: false });
+      const updated = mockUser({ ...target, isDisabled: true });
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([target]),
+        updateUser: jest.fn().mockResolvedValue(updated),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { disabled: true },
+      });
+
+      await handlers.updateUserStatus(req, res);
+
+      expect(deps.updateUser).toHaveBeenCalledWith(validUserId, { isDisabled: true });
+      expect(deps.deleteAllUserSessions).toHaveBeenCalledWith(validUserId);
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({
+        user: expect.objectContaining({ id: validUserId, isDisabled: true }),
+      });
+    });
+
+    it('enables a member without revoking sessions', async () => {
+      const target = mockUser({ _id: new Types.ObjectId(validUserId), isDisabled: true });
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([target]),
+        updateUser: jest.fn().mockResolvedValue(mockUser({ ...target, isDisabled: false })),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status } = createReqRes({
+        params: { id: validUserId },
+        body: { disabled: false },
+      });
+
+      await handlers.updateUserStatus(req, res);
+
+      expect(deps.updateUser).toHaveBeenCalledWith(validUserId, { isDisabled: false });
+      expect(deps.deleteAllUserSessions).not.toHaveBeenCalled();
+      expect(status).toHaveBeenCalledWith(200);
+    });
+
+    it('refuses to disable the caller or the last active admin', async () => {
+      const callerId = new Types.ObjectId();
+      const handlers = createAdminUsersHandlers(createDeps());
+      const self = createReqRes({
+        params: { id: callerId.toString() },
+        body: { disabled: true },
+        user: { _id: callerId, role: SystemRoles.ADMIN },
+      });
+      await handlers.updateUserStatus(self.req, self.res);
+      expect(self.status).toHaveBeenCalledWith(403);
+
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([mockUser({ role: SystemRoles.ADMIN })]),
+        countUsers: jest.fn().mockResolvedValue(1),
+      });
+      const lastAdmin = createReqRes({
+        params: { id: validUserId },
+        body: { disabled: true },
+      });
+      await createAdminUsersHandlers(deps).updateUserStatus(lastAdmin.req, lastAdmin.res);
+      expect(lastAdmin.status).toHaveBeenCalledWith(400);
+      expect(deps.updateUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('user image-agent models', () => {
+    it('returns inherited and effective model lists', async () => {
+      const deps = createDeps({
+        findUsers: jest
+          .fn()
+          .mockResolvedValue([
+            mockUser({ _id: new Types.ObjectId(validUserId), allowedAgentModels: undefined }),
+          ]),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({ params: { id: validUserId } });
+
+      await handlers.getUserAgentModels(req, res);
+
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({
+        agentId: 'agent-image',
+        availableModels: ['gpt-image-a', 'gpt-image-b', ...addedImageModels],
+        allowedModels: null,
+        effectiveModels: ['gpt-image-a', 'gpt-image-b', ...addedImageModels],
+      });
+    });
+
+    it('persists a normalized subset and supports an explicit deny-all list', async () => {
+      const target = mockUser({ _id: new Types.ObjectId(validUserId) });
+      const updateUserAgentModels = jest
+        .fn()
+        .mockResolvedValueOnce(mockUser({ ...target, allowedAgentModels: ['gpt-image-b'] }))
+        .mockResolvedValueOnce(mockUser({ ...target, allowedAgentModels: [] }));
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([target]),
+        updateUserAgentModels,
+      });
+      const handlers = createAdminUsersHandlers(deps);
+
+      const subset = createReqRes({
+        params: { id: validUserId },
+        body: { allowedModels: [' gpt-image-b ', 'gpt-image-b'] },
+      });
+      await handlers.updateUserAgentModels(subset.req, subset.res);
+      expect(updateUserAgentModels).toHaveBeenNthCalledWith(1, validUserId, ['gpt-image-b']);
+      expect(subset.status).toHaveBeenCalledWith(200);
+
+      const denyAll = createReqRes({
+        params: { id: validUserId },
+        body: { allowedModels: [] },
+      });
+      await handlers.updateUserAgentModels(denyAll.req, denyAll.res);
+      expect(updateUserAgentModels).toHaveBeenNthCalledWith(2, validUserId, []);
+      expect(denyAll.json).toHaveBeenCalledWith(
+        expect.objectContaining({ allowedModels: [], effectiveModels: [] }),
+      );
+    });
+
+    it('rejects model IDs outside the image Agent provider list', async () => {
+      const deps = createDeps({
+        findUsers: jest.fn().mockResolvedValue([mockUser()]),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { allowedModels: ['gpt-image-unknown'] },
+      });
+
+      await handlers.updateUserAgentModels(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({
+        error: 'allowedModels contains unavailable models',
+        unavailableModels: ['gpt-image-unknown'],
+      });
+      expect(deps.updateUserAgentModels).not.toHaveBeenCalled();
     });
   });
 });

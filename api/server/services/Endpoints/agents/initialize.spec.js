@@ -207,6 +207,124 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(mockInitializeAgent).not.toHaveBeenCalled();
   });
 
+  it('uses the first user-allowed model for the built-in image agent when its default is denied', async () => {
+    const endpointOption = makeEndpointOption();
+    endpointOption.model_parameters = {};
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'Image Agent',
+      provider: 'openai',
+      model: 'gpt-5.5',
+      allowed_models: ['gpt-5.5', 'gpt-5.4'],
+      tools: [],
+    });
+    const req = makeReq();
+    req.user.allowedAgentModels = ['gpt-5.4'];
+    req.config.modelSpecs = {
+      list: [{ name: 'image-generation', preset: { agent_id: PRIMARY_ID } }],
+    };
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+
+    expect(mockInitializeAgent.mock.calls[0][0].agent.model).toBe('gpt-5.4');
+  });
+
+  it('adds the project image models to the built-in Agent at runtime', async () => {
+    const endpointOption = makeEndpointOption();
+    endpointOption.model_parameters.model = 'gpt-5.6-sol';
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'Image Agent',
+      provider: 'openai',
+      model: 'gpt-5.5',
+      allowed_models: ['gpt-5.5'],
+      tools: [],
+    });
+    const req = makeReq();
+    req.user.allowedAgentModels = ['gpt-5.6-sol'];
+    req.config.modelSpecs = {
+      list: [{ name: 'image-generation', preset: { agent_id: PRIMARY_ID } }],
+    };
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+
+    expect(mockInitializeAgent.mock.calls[0][0].agent).toEqual(
+      expect.objectContaining({
+        model: 'gpt-5.6-sol',
+        allowed_models: expect.arrayContaining(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']),
+      }),
+    );
+  });
+
+  it('rejects a built-in image model outside the user allowlist', async () => {
+    const endpointOption = makeEndpointOption();
+    endpointOption.model_parameters.model = 'gpt-5.5';
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'Image Agent',
+      provider: 'openai',
+      model: 'gpt-5.5',
+      allowed_models: ['gpt-5.5', 'gpt-5.4'],
+      tools: [],
+    });
+    const req = makeReq();
+    req.user.allowedAgentModels = ['gpt-5.4'];
+    req.config.modelSpecs = {
+      list: [{ name: 'image-generation', preset: { agent_id: PRIMARY_ID } }],
+    };
+
+    await expect(
+      initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      }),
+    ).rejects.toThrow(ViolationTypes.ILLEGAL_MODEL_REQUEST);
+
+    expect(mockInitializeAgent).not.toHaveBeenCalled();
+  });
+
+  it('denies every built-in image model for an explicit empty user allowlist', async () => {
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'Image Agent',
+      provider: 'openai',
+      model: 'gpt-4',
+      allowed_models: ['gpt-4'],
+      tools: [],
+    });
+    const req = makeReq();
+    req.user.allowedAgentModels = [];
+    req.config.modelSpecs = {
+      list: [{ name: 'image-generation', preset: { agent_id: PRIMARY_ID } }],
+    };
+
+    await expect(
+      initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      }),
+    ).rejects.toThrow(ViolationTypes.ILLEGAL_MODEL_REQUEST);
+
+    expect(mockInitializeAgent).not.toHaveBeenCalled();
+  });
+
   it('should skip handoff agent and filter its edge when user lacks VIEW access', async () => {
     await createAgent({
       id: TARGET_ID,

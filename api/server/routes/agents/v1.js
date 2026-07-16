@@ -62,6 +62,7 @@ router.get(
     requiredPermission: PermissionBits.VIEW,
     resourceIdParam: 'id',
   }),
+  configMiddleware,
   v1.getAgent,
 );
 
@@ -170,7 +171,7 @@ router.post(
  * @param {AgentListParams} req.query - The agent list parameters for pagination and sorting.
  * @returns {AgentListResponse} 200 - success response - application/json
  */
-router.get('/', checkAgentAccess, v1.getListAgents);
+router.get('/', checkAgentAccess, configMiddleware, v1.getListAgents);
 
 /**
  * Uploads and updates an avatar for a specific agent.

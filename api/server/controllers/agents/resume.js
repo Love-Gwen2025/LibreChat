@@ -21,6 +21,11 @@ const {
   getMCPRequestContext,
   cleanupMCPRequestContextForReq,
 } = require('~/server/services/MCPRequestContext');
+const {
+  completeImageGenerationTask,
+  failImageGenerationTask,
+  cancelImageGenerationTask,
+} = require('~/server/services/ImageGenerationTasks');
 const { saveMessage, getConvo, getMessages } = require('~/models');
 
 /** De-duplicate a merged attachment list by a stable artifact identity. */
@@ -208,6 +213,7 @@ async function finalizeResumedTurn({ req, client, job, streamId, conversationId,
     logger.warn(
       `[ResumeAgentController] Skipping resumed finalization — job ${streamId} was replaced`,
     );
+    await cancelImageGenerationTask(responseMessageId, 'Request superseded by a newer turn');
     return;
   }
   // Prefer the resumed run's live content: it's complete (seeded with the pre-pause
@@ -327,6 +333,7 @@ async function finalizeResumedTurn({ req, client, job, streamId, conversationId,
     logger.warn(
       `[ResumeAgentController] Skipping resumed terminal writes — job ${streamId} was replaced mid-finalize`,
     );
+    await cancelImageGenerationTask(responseMessageId, 'Request superseded by a newer turn');
     return;
   }
 
@@ -358,6 +365,7 @@ async function finalizeResumedTurn({ req, client, job, streamId, conversationId,
   } catch (completeErr) {
     logger.error('[ResumeAgentController] Failed to complete resumed turn', completeErr);
   }
+  await completeImageGenerationTask(responseMessageId, responseMessage);
   await deleteAgentCheckpoint(conversationId, checkpointerCfg);
 }
 
@@ -655,6 +663,10 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
       logger.warn(
         `[ResumeAgentController] Skipping failed-resume finalization — job ${streamId} was replaced`,
       );
+      await cancelImageGenerationTask(
+        job.metadata?.responseMessageId,
+        'Request superseded by a newer turn',
+      );
     } else {
       try {
         await GenerationJobManager.emitError(streamId, err?.message ?? 'Resume failed');
@@ -680,6 +692,7 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
         conversationId,
         req.config?.endpoints?.[EModelEndpoint.agents]?.checkpointer,
       );
+      await failImageGenerationTask(job.metadata?.responseMessageId, err);
     }
   } finally {
     // Tear down the MCP request-context store seeded before the ACK (parity with

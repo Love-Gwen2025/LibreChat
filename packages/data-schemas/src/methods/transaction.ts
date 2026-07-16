@@ -64,6 +64,21 @@ export interface TransactionResult {
   credits?: number;
 }
 
+export interface UserTokenUsageDay {
+  date: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface UserTokenUsage {
+  totalTokens: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  todayTokens: number;
+  daily: UserTokenUsageDay[];
+}
+
 export function createTransactionMethods(
   mongoose: typeof import('mongoose'),
   txMethods: {
@@ -99,6 +114,12 @@ export function createTransactionMethods(
     | undefined
   >;
   createStructuredTransaction: (_txData: TxData) => Promise<TransactionResult | undefined>;
+  getUserTokenUsage: (params: {
+    userId: string;
+    start: Date;
+    end: Date;
+    timezone: string;
+  }) => Promise<UserTokenUsage>;
 } {
   /** Calculate and set the tokenValue for a transaction */
   function calculateTokenValue(txn: InternalTxDoc) {
@@ -291,6 +312,132 @@ export function createTransactionMethods(
     );
   }
 
+  async function getUserTokenUsage({
+    userId,
+    start,
+    end,
+    timezone,
+  }: {
+    userId: string;
+    start: Date;
+    end: Date;
+    timezone: string;
+  }): Promise<UserTokenUsage> {
+    const Transaction = mongoose.models.Transaction as Model<ITransaction>;
+    const [result] = await Transaction.aggregate<{
+      total: Array<{
+        totalTokens: number;
+        promptTokens: number;
+        completionTokens: number;
+      }>;
+      today: Array<{ totalTokens: number }>;
+      daily: UserTokenUsageDay[];
+    }>([
+      {
+        $match: {
+          user: new mongoose.Types.ObjectId(userId),
+          tokenType: { $in: ['prompt', 'completion'] },
+        },
+      },
+      {
+        $facet: {
+          total: [
+            {
+              $group: {
+                _id: null,
+                totalTokens: { $sum: { $abs: { $ifNull: ['$rawAmount', 0] } } },
+                promptTokens: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ['$tokenType', 'prompt'] },
+                      { $abs: { $ifNull: ['$rawAmount', 0] } },
+                      0,
+                    ],
+                  },
+                },
+                completionTokens: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ['$tokenType', 'completion'] },
+                      { $abs: { $ifNull: ['$rawAmount', 0] } },
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+          today: [
+            {
+              $match: {
+                $expr: {
+                  $eq: [
+                    { $dateToString: { date: '$createdAt', format: '%Y-%m-%d', timezone } },
+                    { $dateToString: { date: '$$NOW', format: '%Y-%m-%d', timezone } },
+                  ],
+                },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalTokens: { $sum: { $abs: { $ifNull: ['$rawAmount', 0] } } },
+              },
+            },
+          ],
+          daily: [
+            { $match: { createdAt: { $gte: start, $lte: end } } },
+            {
+              $group: {
+                _id: {
+                  $dateToString: { date: '$createdAt', format: '%Y-%m-%d', timezone },
+                },
+                promptTokens: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ['$tokenType', 'prompt'] },
+                      { $abs: { $ifNull: ['$rawAmount', 0] } },
+                      0,
+                    ],
+                  },
+                },
+                completionTokens: {
+                  $sum: {
+                    $cond: [
+                      { $eq: ['$tokenType', 'completion'] },
+                      { $abs: { $ifNull: ['$rawAmount', 0] } },
+                      0,
+                    ],
+                  },
+                },
+                totalTokens: { $sum: { $abs: { $ifNull: ['$rawAmount', 0] } } },
+              },
+            },
+            { $sort: { _id: 1 } },
+            {
+              $project: {
+                _id: 0,
+                date: '$_id',
+                promptTokens: 1,
+                completionTokens: 1,
+                totalTokens: 1,
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const total = result?.total[0];
+    return {
+      totalTokens: total?.totalTokens ?? 0,
+      totalPromptTokens: total?.promptTokens ?? 0,
+      totalCompletionTokens: total?.completionTokens ?? 0,
+      todayTokens: result?.today[0]?.totalTokens ?? 0,
+      daily: result?.daily ?? [],
+    };
+  }
+
   /**
    * Creates an auto-refill transaction that also updates balance.
    */
@@ -477,6 +624,7 @@ export function createTransactionMethods(
     createTransaction,
     createAutoRefillTransaction,
     createStructuredTransaction,
+    getUserTokenUsage,
   };
 }
 

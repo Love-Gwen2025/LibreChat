@@ -30,6 +30,7 @@ export const SystemCapabilities = {
   MANAGE_CONFIGS: 'manage:configs',
   ASSIGN_CONFIGS: 'assign:configs',
   READ_USAGE: 'read:usage',
+  MANAGE_USER_MODELS: 'manage:user_models',
   READ_AGENTS: 'read:agents',
   MANAGE_AGENTS: 'manage:agents',
   MANAGE_MCP_SERVERS: 'manage:mcpservers',
@@ -189,7 +190,11 @@ export const CAPABILITY_CATEGORIES: CapabilityCategory[] = [
   {
     key: 'users',
     labelKey: 'com_cap_cat_users',
-    capabilities: [SystemCapabilities.MANAGE_USERS, SystemCapabilities.READ_USERS],
+    capabilities: [
+      SystemCapabilities.MANAGE_USERS,
+      SystemCapabilities.READ_USERS,
+      SystemCapabilities.MANAGE_USER_MODELS,
+    ],
   },
   {
     key: 'groups',

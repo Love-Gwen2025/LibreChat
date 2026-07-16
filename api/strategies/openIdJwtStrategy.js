@@ -11,6 +11,8 @@ const {
   normalizeOpenIdIssuer,
   getHttpsProxyAgent,
   math,
+  isUserDisabled,
+  DISABLED_USER_MESSAGE,
 } = require('@librechat/api');
 const { updateUser, findUser } = require('~/models');
 
@@ -116,6 +118,10 @@ const openIdJwtLogin = (openIdConfig) => {
         }
 
         if (user) {
+          if (isUserDisabled(user)) {
+            done(null, false, { message: DISABLED_USER_MESSAGE });
+            return;
+          }
           user.id = user._id.toString();
 
           const updateData = {};

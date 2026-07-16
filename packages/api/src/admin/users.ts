@@ -1,8 +1,9 @@
 import { Types } from 'mongoose';
-import { PrincipalType, SystemRoles } from 'librechat-data-provider';
+import { EModelEndpoint, PrincipalType, SystemRoles } from 'librechat-data-provider';
 import { logger, isValidObjectIdString } from '@librechat/data-schemas';
 import type {
   IUser,
+  IAgent,
   IConfig,
   IMessage,
   IConversation,
@@ -14,10 +15,17 @@ import type { FilterQuery } from 'mongoose';
 import type { Response } from 'express';
 import type { ServerRequest } from '~/types/http';
 import { parsePagination } from './pagination';
+import {
+  getBuiltinImageAgentId,
+  getBuiltinImageAgentModels,
+  getEffectiveAgentModels,
+  normalizeAgentModels,
+} from '~/agents/imageAgent';
 
 const MAX_SEARCH_LENGTH = 200;
 
-const USER_LIST_FIELDS = '_id name username email avatar role provider createdAt updatedAt';
+const USER_LIST_FIELDS =
+  '_id name username email avatar role provider isDisabled allowedAgentModels createdAt updatedAt';
 
 type RegisterUserResult = {
   status: number;
@@ -34,6 +42,10 @@ function mapUserListItem(user: IUser): AdminUserListItem {
     avatar: user.avatar ?? '',
     role: user.role ?? SystemRoles.USER,
     provider: user.provider ?? 'local',
+    isDisabled: user.isDisabled === true,
+    ...(user.allowedAgentModels !== undefined && {
+      allowedAgentModels: normalizeAgentModels(user.allowedAgentModels),
+    }),
     createdAt: user.createdAt?.toISOString(),
     updatedAt: user.updatedAt?.toISOString(),
   };
@@ -74,6 +86,10 @@ export interface AdminUsersDeps {
     principalId: string | Types.ObjectId;
   }) => Promise<void>;
   updateUser: (userId: string, updateData: Partial<IUser>) => Promise<IUser | null>;
+  updateUserAgentModels: (userId: string, models: string[] | null) => Promise<IUser | null>;
+  deleteAllUserSessions: (userId: string) => Promise<{ deletedCount?: number }>;
+  getAgent: (searchCriteria: FilterQuery<IAgent>) => Promise<IAgent | null>;
+  getModelsConfig: (req: ServerRequest) => Promise<Record<string, unknown>>;
   /** Removes the user's conversations and their messages. Throws when the user has none. */
   deleteConvos: (user: string, filter: FilterQuery<IConversation>) => Promise<unknown>;
   deleteMessages: (filter: FilterQuery<IMessage>) => Promise<unknown>;
@@ -91,6 +107,9 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
   searchUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   deleteUser: (req: ServerRequest, res: Response) => Promise<Response>;
   updateUserRole: (req: ServerRequest, res: Response) => Promise<Response>;
+  updateUserStatus: (req: ServerRequest, res: Response) => Promise<Response>;
+  getUserAgentModels: (req: ServerRequest, res: Response) => Promise<Response>;
+  updateUserAgentModels: (req: ServerRequest, res: Response) => Promise<Response>;
 } {
   const {
     findUser,
@@ -100,6 +119,10 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     deleteConfig,
     deleteAclEntries,
     updateUser,
+    updateUserAgentModels,
+    deleteAllUserSessions,
+    getAgent,
+    getModelsConfig,
     deleteConvos,
     deleteMessages,
     registerUser,
@@ -341,11 +364,194 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     }
   }
 
+  async function updateUserStatusHandler(req: ServerRequest, res: Response) {
+    try {
+      const { id } = req.params as { id: string };
+      const { disabled } = req.body as { disabled?: unknown };
+
+      if (!isValidObjectIdString(id)) {
+        return res.status(400).json({ error: 'Invalid user ID format' });
+      }
+      if (typeof disabled !== 'boolean') {
+        return res.status(400).json({ error: 'disabled must be a boolean' });
+      }
+
+      const callerId = req.user?._id?.toString() ?? req.user?.id;
+      if (disabled && callerId === id) {
+        return res.status(403).json({ error: 'Cannot disable your own account' });
+      }
+
+      const [targetUser] = await findUsers(
+        { _id: id },
+        '_id name username email avatar role provider isDisabled allowedAgentModels createdAt updatedAt',
+        { limit: 1 },
+      );
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (targetUser.isDisabled === disabled) {
+        return res.status(200).json({ user: mapUserListItem(targetUser) });
+      }
+
+      if (disabled && targetUser.role === SystemRoles.ADMIN) {
+        const activeAdminCount = await countUsers({
+          role: SystemRoles.ADMIN,
+          isDisabled: { $ne: true },
+        });
+        if (activeAdminCount <= 1) {
+          return res.status(400).json({ error: 'Cannot disable the last active admin user' });
+        }
+      }
+
+      const updated = await updateUser(id, { isDisabled: disabled });
+      if (!updated) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (disabled) {
+        try {
+          await deleteAllUserSessions(id);
+        } catch (error) {
+          logger.error('[adminUsers] failed to revoke disabled user sessions:', id, error);
+        }
+      }
+
+      return res.status(200).json({ user: mapUserListItem(updated) });
+    } catch (error) {
+      logger.error('[adminUsers] updateUserStatus error:', error);
+      return res.status(500).json({ error: 'Failed to update user status' });
+    }
+  }
+
+  async function resolveUserAgentModels(req: ServerRequest, userId: string) {
+    const [user] = await findUsers({ _id: userId }, '_id allowedAgentModels', { limit: 1 });
+    if (!user) {
+      return { error: 'User not found' as const, status: 404 as const };
+    }
+
+    const agentId = getBuiltinImageAgentId(req.config);
+    if (!agentId) {
+      return { error: 'Built-in image Agent is not configured' as const, status: 503 as const };
+    }
+
+    const agent = await getAgent({ id: agentId });
+    if (!agent) {
+      return { error: 'Built-in image Agent was not found' as const, status: 503 as const };
+    }
+
+    let availableModels = getBuiltinImageAgentModels(agent.allowed_models);
+    const modelsConfig = await getModelsConfig(req);
+    const providerKey =
+      agent.provider.toLowerCase() === 'openai' ? EModelEndpoint.openAI : agent.provider;
+    const providerModels = normalizeAgentModels(modelsConfig[providerKey]);
+    if (providerModels.length > 0) {
+      const providerSet = new Set(providerModels);
+      availableModels = availableModels.filter((model) => providerSet.has(model));
+    }
+
+    return {
+      user,
+      agentId,
+      availableModels,
+      allowedModels:
+        user.allowedAgentModels === undefined
+          ? null
+          : normalizeAgentModels(user.allowedAgentModels),
+    };
+  }
+
+  async function getUserAgentModelsHandler(req: ServerRequest, res: Response) {
+    try {
+      const { id } = req.params as { id: string };
+      if (!isValidObjectIdString(id)) {
+        return res.status(400).json({ error: 'Invalid user ID format' });
+      }
+
+      const resolved = await resolveUserAgentModels(req, id);
+      if ('error' in resolved) {
+        return res.status(resolved.status).json({ error: resolved.error });
+      }
+
+      return res.status(200).json({
+        agentId: resolved.agentId,
+        availableModels: resolved.availableModels,
+        allowedModels: resolved.allowedModels,
+        effectiveModels: getEffectiveAgentModels(resolved.availableModels, resolved.allowedModels),
+      });
+    } catch (error) {
+      logger.error('[adminUsers] getUserAgentModels error:', error);
+      return res.status(500).json({ error: 'Failed to load user models' });
+    }
+  }
+
+  async function updateUserAgentModelsHandler(req: ServerRequest, res: Response) {
+    try {
+      const { id } = req.params as { id: string };
+      if (!isValidObjectIdString(id)) {
+        return res.status(400).json({ error: 'Invalid user ID format' });
+      }
+
+      const rawAllowedModels = (req.body as { allowedModels?: unknown }).allowedModels;
+      if (rawAllowedModels !== null && !Array.isArray(rawAllowedModels)) {
+        return res.status(400).json({ error: 'allowedModels must be an array or null' });
+      }
+      if (
+        Array.isArray(rawAllowedModels) &&
+        rawAllowedModels.some(
+          (model) => typeof model !== 'string' || model.trim().length === 0 || model.length > 256,
+        )
+      ) {
+        return res.status(400).json({ error: 'allowedModels contains an invalid model ID' });
+      }
+
+      const resolved = await resolveUserAgentModels(req, id);
+      if ('error' in resolved) {
+        return res.status(resolved.status).json({ error: resolved.error });
+      }
+
+      const allowedModels =
+        rawAllowedModels === null ? null : normalizeAgentModels(rawAllowedModels);
+      if (allowedModels && allowedModels.length > 100) {
+        return res.status(400).json({ error: 'No more than 100 models may be assigned' });
+      }
+      const availableSet = new Set(resolved.availableModels);
+      const unavailableModels = allowedModels?.filter((model) => !availableSet.has(model)) ?? [];
+      if (unavailableModels.length > 0) {
+        return res.status(400).json({
+          error: 'allowedModels contains unavailable models',
+          unavailableModels,
+        });
+      }
+
+      const updated = await updateUserAgentModels(id, allowedModels);
+      if (!updated) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const savedModels =
+        updated.allowedAgentModels === undefined
+          ? null
+          : normalizeAgentModels(updated.allowedAgentModels);
+      return res.status(200).json({
+        agentId: resolved.agentId,
+        availableModels: resolved.availableModels,
+        allowedModels: savedModels,
+        effectiveModels: getEffectiveAgentModels(resolved.availableModels, savedModels),
+      });
+    } catch (error) {
+      logger.error('[adminUsers] updateUserAgentModels error:', error);
+      return res.status(500).json({ error: 'Failed to update user models' });
+    }
+  }
+
   return {
     createUser: createUserHandler,
     listUsers: listUsersHandler,
     searchUsers: searchUsersHandler,
     deleteUser: deleteUserHandler,
     updateUserRole: updateUserRoleHandler,
+    updateUserStatus: updateUserStatusHandler,
+    getUserAgentModels: getUserAgentModelsHandler,
+    updateUserAgentModels: updateUserAgentModelsHandler,
   };
 }

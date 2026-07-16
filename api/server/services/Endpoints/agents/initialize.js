@@ -10,6 +10,9 @@ const {
   extractManualSkills,
   GenerationJobManager,
   getCustomEndpointConfig,
+  getBuiltinImageAgentId,
+  getBuiltinImageAgentModels,
+  getEffectiveAgentModels,
   discoverConnectedAgents,
   resolveAgentTokenConfig,
   resolveAgentScopedSkillIds,
@@ -105,23 +108,49 @@ function createToolLoader(signal, streamId = null, definitionsOnly = false) {
 
 /**
  * Applies a conversation-level model only when the persisted agent explicitly allows it.
- * Agents without an allowlist retain their configured model, preserving existing behavior.
+ * Ordinary Agents without an allowlist retain their configured model; the built-in image Agent
+ * fails closed when its Agent/user intersection is empty.
  */
 async function applyRequestedAgentModel({ req, res, agent, endpointOption }) {
   const requestedModel = endpointOption.model_parameters?.model;
   const allowedModels = agent.allowed_models;
 
+  const imageAgentId = getBuiltinImageAgentId(req.config);
+  const isBuiltinImageAgent = Boolean(imageAgentId && agent.id === imageAgentId);
+  const availableAgentModels = isBuiltinImageAgent
+    ? getBuiltinImageAgentModels(allowedModels)
+    : allowedModels;
+  if (isBuiltinImageAgent) {
+    agent.allowed_models = availableAgentModels;
+  }
+  const effectiveModels = isBuiltinImageAgent
+    ? getEffectiveAgentModels(availableAgentModels, req.user?.allowedAgentModels)
+    : availableAgentModels;
+
+  if (!isBuiltinImageAgent && (!Array.isArray(allowedModels) || allowedModels.length === 0)) {
+    return;
+  }
+
   if (
-    typeof requestedModel !== 'string' ||
-    requestedModel.length === 0 ||
-    requestedModel === agent.model ||
-    !Array.isArray(allowedModels) ||
-    allowedModels.length === 0
+    !isBuiltinImageAgent &&
+    (typeof requestedModel !== 'string' ||
+      requestedModel.length === 0 ||
+      requestedModel === agent.model)
   ) {
     return;
   }
 
-  if (allowedModels.includes(requestedModel)) {
+  if (isBuiltinImageAgent && effectiveModels.length > 0) {
+    if (typeof requestedModel !== 'string' || requestedModel.length === 0) {
+      if (effectiveModels.includes(agent.model)) {
+        return;
+      }
+      agent.model = effectiveModels[0];
+      return;
+    }
+  }
+
+  if (effectiveModels.includes(requestedModel)) {
     agent.model = requestedModel;
     return;
   }

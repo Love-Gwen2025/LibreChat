@@ -37,12 +37,14 @@ export interface ConversationMethods {
     options?: {
       cursor?: string | null;
       limit?: number;
-      isArchived?: boolean;
+      isArchived?: boolean | null;
       tags?: string[];
       search?: string;
       sortBy?: string;
       sortDirection?: string;
       projectId?: string;
+      updatedAfter?: Date;
+      updatedBefore?: Date;
     },
   ): Promise<{ conversations: IConversation[]; nextCursor: string | null }>;
   getConvosQueried(
@@ -547,24 +549,37 @@ export function createConversationMethods(
       sortBy = 'updatedAt',
       sortDirection = 'desc',
       projectId,
+      updatedAfter,
+      updatedBefore,
     }: {
       cursor?: string | null;
       limit?: number;
-      isArchived?: boolean;
+      isArchived?: boolean | null;
       tags?: string[];
       search?: string;
       sortBy?: string;
       sortDirection?: string;
       projectId?: string;
+      updatedAfter?: Date;
+      updatedBefore?: Date;
     } = {},
   ) {
     const Conversation = mongoose.models.Conversation as Model<IConversation>;
     const filters: FilterQuery<IConversation>[] = [{ user } as FilterQuery<IConversation>];
-    if (isArchived) {
+    if (isArchived === true) {
       filters.push({ isArchived: true } as FilterQuery<IConversation>);
-    } else {
+    } else if (isArchived === false) {
       filters.push({
         $or: [{ isArchived: false }, { isArchived: { $exists: false } }],
+      } as FilterQuery<IConversation>);
+    }
+
+    if (updatedAfter || updatedBefore) {
+      filters.push({
+        updatedAt: {
+          ...(updatedAfter && { $gte: updatedAfter }),
+          ...(updatedBefore && { $lte: updatedBefore }),
+        },
       } as FilterQuery<IConversation>);
     }
 
@@ -620,20 +635,41 @@ export function createConversationMethods(
     if (cursor) {
       try {
         const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString());
-        const { primary, secondary } = decoded;
+        const { primary, secondary, tertiary } = decoded;
         const primaryValue = finalSortBy === 'title' ? primary : new Date(primary);
         const secondaryValue = new Date(secondary);
         const op = finalSortDirection === 'asc' ? '$gt' : '$lt';
+        const hasStableId = typeof tertiary === 'string' && tertiary.length > 0;
 
-        cursorFilter = {
-          $or: [
-            { [finalSortBy]: { [op]: primaryValue } },
-            {
-              [finalSortBy]: primaryValue,
-              updatedAt: { [op]: secondaryValue },
-            },
-          ],
-        } as FilterQuery<IConversation>;
+        if (finalSortBy === 'updatedAt') {
+          cursorFilter = {
+            $or: [
+              { updatedAt: { [op]: primaryValue } },
+              ...(hasStableId
+                ? [{ updatedAt: primaryValue, conversationId: { [op]: tertiary } }]
+                : []),
+            ],
+          } as FilterQuery<IConversation>;
+        } else {
+          cursorFilter = {
+            $or: [
+              { [finalSortBy]: { [op]: primaryValue } },
+              {
+                [finalSortBy]: primaryValue,
+                updatedAt: { [op]: secondaryValue },
+              },
+              ...(hasStableId
+                ? [
+                    {
+                      [finalSortBy]: primaryValue,
+                      updatedAt: secondaryValue,
+                      conversationId: { [op]: tertiary },
+                    },
+                  ]
+                : []),
+            ],
+          } as FilterQuery<IConversation>;
+        }
       } catch {
         logger.warn('[getConvosByCursor] Invalid cursor format, starting from beginning');
       }
@@ -652,6 +688,7 @@ export function createConversationMethods(
       if (finalSortBy !== 'updatedAt') {
         sortObj.updatedAt = sortOrder;
       }
+      sortObj.conversationId = sortOrder;
 
       const convos = await Conversation.find(query)
         .select(
@@ -674,7 +711,11 @@ export function createConversationMethods(
         const primaryStr =
           finalSortBy === 'title' ? primaryValue : new Date(primaryValue ?? 0).toISOString();
         const secondaryStr = new Date(lastReturned.updatedAt ?? 0).toISOString();
-        const composite = { primary: primaryStr, secondary: secondaryStr };
+        const composite = {
+          primary: primaryStr,
+          secondary: secondaryStr,
+          tertiary: lastReturned.conversationId,
+        };
         nextCursor = Buffer.from(JSON.stringify(composite)).toString('base64');
       }
 

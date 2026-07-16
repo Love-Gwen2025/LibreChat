@@ -65,6 +65,15 @@ const userSchema: Schema<IUser> = new Schema<IUser>(
       type: String,
       default: SystemRoles.USER,
     },
+    isDisabled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    allowedAgentModels: {
+      type: [String],
+      default: undefined,
+    },
     googleId: {
       type: String,
     },

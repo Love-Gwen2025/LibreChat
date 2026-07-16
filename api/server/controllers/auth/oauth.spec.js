@@ -2,6 +2,7 @@ const mockIsEnabled = jest.fn();
 const mockGetAdminPanelUrl = jest.fn();
 const mockIsAdminPanelRedirect = jest.fn();
 const mockGenerateAdminExchangeCode = jest.fn();
+const mockIsUserDisabled = jest.fn();
 const mockSyncUserEntraGroupMemberships = jest.fn();
 const mockSetAuthTokens = jest.fn();
 const mockSetOpenIDAuthTokens = jest.fn();
@@ -21,6 +22,8 @@ jest.mock('@librechat/data-schemas', () => ({
 
 jest.mock('@librechat/api', () => ({
   isEnabled: (...args) => mockIsEnabled(...args),
+  isUserDisabled: (...args) => mockIsUserDisabled(...args),
+  DISABLED_USER_MESSAGE: 'This account has been disabled.',
   getAdminPanelUrl: (...args) => mockGetAdminPanelUrl(...args),
   isAdminPanelRedirect: (...args) => mockIsAdminPanelRedirect(...args),
   generateAdminExchangeCode: (...args) => mockGenerateAdminExchangeCode(...args),
@@ -70,10 +73,14 @@ function buildReq(overrides = {}) {
 }
 
 function buildRes() {
-  return {
+  const res = {
     headersSent: false,
     redirect: jest.fn(),
+    send: jest.fn(),
+    status: jest.fn(),
   };
+  res.status.mockReturnValue(res);
+  return res;
 }
 
 describe('createOAuthHandler', () => {
@@ -86,6 +93,7 @@ describe('createOAuthHandler', () => {
       OPENID_REUSE_TOKENS: 'false',
     };
     mockIsEnabled.mockImplementation((value) => value === 'true' || value === true);
+    mockIsUserDisabled.mockReturnValue(false);
     mockGetAdminPanelUrl.mockReturnValue('http://admin.example.com');
     mockIsAdminPanelRedirect.mockReturnValue(true);
     mockGetLogStores.mockReturnValue({});
@@ -147,5 +155,20 @@ describe('createOAuthHandler', () => {
     expect(mockSetOpenIDAuthTokens).not.toHaveBeenCalled();
     expect(mockSetAuthTokens).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it('rejects disabled OAuth users before issuing or exchanging tokens', async () => {
+    mockIsUserDisabled.mockReturnValue(true);
+    const handler = createOAuthHandler('http://admin.example.com/auth/openid/callback');
+    const req = buildReq();
+    const res = buildRes();
+
+    await handler(req, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.send).toHaveBeenCalledWith('This account has been disabled.');
+    expect(mockGenerateToken).not.toHaveBeenCalled();
+    expect(mockGenerateAdminExchangeCode).not.toHaveBeenCalled();
+    expect(res.redirect).not.toHaveBeenCalled();
   });
 });

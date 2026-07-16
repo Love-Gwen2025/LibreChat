@@ -63,9 +63,7 @@ jest.mock('~/components/SidePanel/Nav', () => ({
 jest.mock('~/components/Nav/AccountSettings', () => ({
   __esModule: true,
   default: ({ collapsed = false }: { collapsed?: boolean }) => (
-    <div data-collapsed={String(collapsed)} data-testid="account-settings">
-      account
-    </div>
+    <div data-collapsed={String(collapsed)} data-testid="account-settings" />
   ),
 }));
 
@@ -134,6 +132,16 @@ describe('ExpandedPanel', () => {
     fireEvent.click(screen.getByTestId('close-sidebar-button'));
 
     expect(onCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it('centers the LikeChat wordmark in the sidebar header', async () => {
+    await renderReady();
+
+    expect(screen.getByTestId('sidebar-brand-logo')).toHaveAttribute(
+      'src',
+      '/assets/likechat-wordmark.png',
+    );
+    expect(screen.getByTestId('sidebar-brand-logo')).toHaveAttribute('alt', 'com_ui_likechat_logo');
   });
 
   it('places the expanded account menu after the conversation area', async () => {

@@ -5,6 +5,7 @@ import { createAgentCategoryModel } from './agentCategory';
 import { createChatProjectModel } from './chatProject';
 import { createAgentApiKeyModel } from './agentApiKey';
 import { createTransactionModel } from './transaction';
+import { createImageGenerationTaskModel } from './imageGenerationTask';
 import { createPromptGroupModel } from './promptGroup';
 import { createSystemGrantModel } from './systemGrant';
 import { createPluginAuthModel } from './pluginAuth';
@@ -58,6 +59,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
   Key: ReturnType<typeof createKeyModel>;
   PluginAuth: ReturnType<typeof createPluginAuthModel>;
   Transaction: ReturnType<typeof createTransactionModel>;
+  ImageGenerationTask: ReturnType<typeof createImageGenerationTaskModel>;
   Preset: ReturnType<typeof createPresetModel>;
   Prompt: ReturnType<typeof createPromptModel>;
   PromptGroup: ReturnType<typeof createPromptGroupModel>;
@@ -96,6 +98,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
     Key: createKeyModel(mongoose),
     PluginAuth: createPluginAuthModel(mongoose),
     Transaction: createTransactionModel(mongoose),
+    ImageGenerationTask: createImageGenerationTaskModel(mongoose),
     Preset: createPresetModel(mongoose),
     Prompt: createPromptModel(mongoose),
     PromptGroup: createPromptGroupModel(mongoose),

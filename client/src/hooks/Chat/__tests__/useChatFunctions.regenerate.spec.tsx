@@ -11,6 +11,7 @@ const mockSetFilesToDelete = jest.fn();
 const mockGetSender = jest.fn(() => 'Assistant');
 const mockGetExpiry = jest.fn(() => 'expiry-key');
 const mockGetQueryData = jest.fn(() => ({}));
+let mockAgentsMap: Record<string, { allowed_models?: string[] }> = {};
 
 jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -42,6 +43,9 @@ jest.mock('~/hooks/Input/useUserKey', () => () => ({ getExpiry: mockGetExpiry })
 jest.mock('~/hooks', () => ({
   useAuthContext: () => ({ user: null }),
 }));
+jest.mock('~/Providers', () => ({
+  useAgentsMapContext: () => mockAgentsMap,
+}));
 jest.mock('~/store', () => ({
   __esModule: true,
   default: {
@@ -49,6 +53,7 @@ jest.mock('~/store', () => ({
     isSubmittingFamily: () => 'isSubmitting',
     showStopButtonByIndex: () => 'showStopButton',
     pendingManualSkillsByConvoId: () => 'pendingManualSkills',
+    pendingQuotesByConvoId: () => 'pendingQuotes',
     messagesSiblingIdxFamily: () => 'messagesSiblingIdx',
   },
   useGetEphemeralAgent: () => mockGetEphemeralAgent,
@@ -86,6 +91,7 @@ describe('useChatFunctions regenerate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetQueryData.mockReturnValue({});
+    mockAgentsMap = {};
   });
 
   it('keys a non-tail regenerate to the selected assistant response', () => {
@@ -141,5 +147,36 @@ describe('useChatFunctions regenerate', () => {
       setMessages.mock.calls.at(-1)?.[0].map((message: TMessage) => message.messageId),
     ).toEqual(['user-1', 'assistant-1_']);
     expect(messages.at(-1)?.messageId).toBe('assistant-1_');
+  });
+
+  it('submits the first model allowed by the scoped image Agent when the conversation model is denied', () => {
+    const setSubmission = jest.fn();
+    const conversation = {
+      conversationId: 'conversation-1',
+      endpoint: EModelEndpoint.agents,
+      agent_id: 'agent-image',
+      agent_model: 'gpt-image-denied',
+    } as TConversation;
+    mockAgentsMap = {
+      'agent-image': { allowed_models: ['gpt-image-allowed'] },
+    };
+
+    const { result } = renderHook(() =>
+      useChatFunctions({
+        isSubmitting: false,
+        latestMessage: null,
+        conversation,
+        getMessages: () => [],
+        setMessages: jest.fn(),
+        setSubmission,
+      }),
+    );
+
+    act(() => {
+      result.current.ask({ text: 'Draw a lighthouse' });
+    });
+
+    const submission = setSubmission.mock.calls.at(-1)?.[0] as TSubmission;
+    expect(submission.endpointOption.agent_model).toBe('gpt-image-allowed');
   });
 });

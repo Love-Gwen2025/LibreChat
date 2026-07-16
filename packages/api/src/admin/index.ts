@@ -6,6 +6,8 @@ export { createAdminSkillsSyncAccess, createAdminSkillsSyncHandlers } from './sk
 export { createAdminUsersHandlers } from './users';
 export { createAdminConversationsHandlers } from './conversations';
 export { createAdminAuditLogHandlers } from './auditLog';
+export { createAdminUsageHandlers } from './usage';
+export { createAdminImageTasksHandlers } from './imageTasks';
 export type { AdminConfigDeps } from './config';
 export type { AdminGrantsDeps, GrantPrincipalType } from './grants';
 export type { AdminGroupsDeps } from './groups';
@@ -14,3 +16,5 @@ export type { AdminSkillSyncAccessDeps, AdminSkillSyncDeps } from './skills';
 export type { AdminUsersDeps } from './users';
 export type { AdminConversationsDeps } from './conversations';
 export type { AdminAuditLogDeps } from './auditLog';
+export type { AdminUsageDeps } from './usage';
+export type { AdminImageTasksDeps } from './imageTasks';

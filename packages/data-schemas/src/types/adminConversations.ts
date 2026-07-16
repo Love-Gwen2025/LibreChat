@@ -22,6 +22,18 @@ export type AdminConversationMessage = {
   model?: string;
   endpoint?: string;
   createdAt?: string;
+  images: AdminConversationImage[];
+};
+
+/** Safe image metadata; storage paths and owner identifiers are never exposed. */
+export type AdminConversationImage = {
+  fileId: string;
+  filename: string;
+  mimeType: string;
+  width?: number;
+  height?: number;
+  context?: string;
+  url: string;
 };
 
 /** Aggregate conversation/message counters for a single user. */

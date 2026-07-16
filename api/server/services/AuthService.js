@@ -19,6 +19,8 @@ const {
   isEmailDomainAllowed,
   shouldUseSecureCookie,
   resolveAppConfigForUser,
+  isUserDisabled,
+  DISABLED_USER_MESSAGE,
 } = require('@librechat/api');
 const {
   findUser,
@@ -656,6 +658,14 @@ const setCloudFrontAuthCookies = (req, res, user, options = {}) => {
  */
 const setAuthTokens = async (userId, res, _session = null, req = null) => {
   try {
+    const user = await getUserById(userId);
+    if (!user) {
+      throw new Error('User not found.');
+    }
+    if (isUserDisabled(user)) {
+      throw new Error(DISABLED_USER_MESSAGE);
+    }
+
     let session = _session;
     let refreshToken;
     let refreshTokenExpires;
@@ -671,7 +681,6 @@ const setAuthTokens = async (userId, res, _session = null, req = null) => {
       refreshTokenExpires = session.expiration.getTime();
     }
 
-    const user = await getUserById(userId);
     const sessionExpiry = math(process.env.SESSION_EXPIRY, DEFAULT_SESSION_EXPIRY);
     const token = await generateToken(user, sessionExpiry);
 

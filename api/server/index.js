@@ -245,6 +245,8 @@ const startServer = async () => {
   app.use('/api/admin/users', routes.adminUsers);
   app.use('/api/admin/conversations', routes.adminConversations);
   app.use('/api/admin/audit-log', routes.adminAuditLog);
+  app.use('/api/admin/usage', routes.adminUsage);
+  app.use('/api/admin/image-tasks', routes.adminImageTasks);
   app.use('/api/actions', routes.actions);
   app.use('/api/keys', routes.keys);
   app.use('/api/api-keys', routes.apiKeys);

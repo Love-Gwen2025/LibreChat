@@ -21,6 +21,12 @@ const {
 const { handleAbortError } = require('~/server/middleware');
 const { logViolation } = require('~/cache');
 const { saveMessage, getMessages, getConvo } = require('~/models');
+const {
+  createImageGenerationTask,
+  completeImageGenerationTask,
+  failImageGenerationTask,
+  cancelImageGenerationTask,
+} = require('~/server/services/ImageGenerationTasks');
 
 function createCloseHandler(abortController) {
   return function (manual) {
@@ -233,6 +239,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
   req.body.conversationId = conversationId;
 
   let client = null;
+  let imageTaskId = null;
 
   try {
     logger.debug(`[ResumableAgentController] Creating job`, {
@@ -270,6 +277,13 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       isTemporary: req.body?.isTemporary,
       responseMessageId: preliminaryResponseMessageId,
       userMessage: preliminaryUserMessage,
+    });
+    imageTaskId = await createImageGenerationTask({
+      req,
+      endpointOption,
+      streamId,
+      conversationId,
+      responseMessageId: preliminaryResponseMessageId,
     });
 
     // Note: We no longer use res.on('close') to abort since we send JSON immediately.
@@ -726,6 +740,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
           resolveConvoReady();
           // Still decrement pending request since we incremented at start
           await finishResumableRequest(req, userId);
+          await cancelImageGenerationTask(imageTaskId, 'Request superseded by a newer turn');
           if (immediateTitlePromise) {
             immediateTitlePromise.finally(() => {
               if (client) {
@@ -775,6 +790,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
 
           await GenerationJobManager.emitDone(streamId, finalEvent);
           GenerationJobManager.completeJob(streamId);
+          await completeImageGenerationTask(imageTaskId, response);
           await finishResumableRequest(req, userId);
         } else {
           const finalEvent = {
@@ -795,6 +811,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
 
           await GenerationJobManager.emitDone(streamId, finalEvent);
           GenerationJobManager.completeJob(streamId, 'Request aborted');
+          await cancelImageGenerationTask(imageTaskId, 'Request aborted');
           await finishResumableRequest(req, userId);
         }
 
@@ -847,10 +864,12 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         if (wasAborted) {
           logger.debug(`[ResumableAgentController] Generation aborted for ${streamId}`);
           // abortJob already handled emitDone and completeJob
+          await cancelImageGenerationTask(imageTaskId, 'Request aborted');
         } else {
           logger.error(`[ResumableAgentController] Generation error for ${streamId}:`, error);
           await GenerationJobManager.emitError(streamId, error.message || 'Generation failed');
           GenerationJobManager.completeJob(streamId, error.message);
+          await failImageGenerationTask(imageTaskId, error);
         }
 
         await finishResumableRequest(req, userId);
@@ -877,6 +896,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         `[ResumableAgentController] Unhandled error in background generation: ${err.message}`,
       );
       GenerationJobManager.completeJob(streamId, err.message);
+      await failImageGenerationTask(imageTaskId, err);
       await finishResumableRequest(req, userId);
     });
   } catch (error) {
@@ -888,6 +908,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       await GenerationJobManager.emitError(streamId, error.message || 'Failed to start generation');
     }
     GenerationJobManager.completeJob(streamId, error.message);
+    await failImageGenerationTask(imageTaskId, error);
     await finishResumableRequest(req, userId);
     if (client) {
       disposeClient(client);

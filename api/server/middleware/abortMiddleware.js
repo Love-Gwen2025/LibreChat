@@ -13,6 +13,7 @@ const { truncateText, smartTruncateText } = require('~/app/clients/prompts');
 const clearPendingReq = require('~/cache/clearPendingReq');
 const { sendError } = require('~/server/middleware/error');
 const { abortRun } = require('./abortRun');
+const { cancelImageGenerationTask } = require('~/server/services/ImageGenerationTasks');
 const db = require('~/models');
 
 /**
@@ -175,6 +176,7 @@ async function abortMessage(req, res) {
     { ...responseMessage, user: userId },
     { context: 'api/server/middleware/abortMiddleware.js' },
   );
+  await cancelImageGenerationTask(jobData?.responseMessageId, 'Request aborted');
 
   // Get conversation for title
   const conversation = await db.getConvo(userId, conversationId);

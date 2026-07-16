@@ -20,6 +20,10 @@ export interface IUser extends Document {
   avatar?: string;
   provider: string;
   role?: string;
+  /** Disabled users cannot sign in, refresh tokens, or access authenticated routes. */
+  isDisabled?: boolean;
+  /** Optional per-user restriction applied to the built-in image Agent model allowlist. */
+  allowedAgentModels?: string[];
   googleId?: string;
   facebookId?: string;
   openidId?: string;
@@ -89,6 +93,8 @@ export interface UpdateUserRequest {
   username?: string;
   email?: string;
   role?: string;
+  isDisabled?: boolean;
+  allowedAgentModels?: string[];
   emailVerified?: boolean;
   avatar?: string;
   plugins?: string[];

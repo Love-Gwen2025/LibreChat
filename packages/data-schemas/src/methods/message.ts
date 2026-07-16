@@ -408,12 +408,39 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
   ) {
     const Message = mongoose.models.Message as Model<IMessage>;
     const { sortField = 'createdAt', sortOrder = -1, limit = 25, cursor } = options;
-    const queryFilter = { ...filter };
+    let queryFilter: FilterQuery<IMessage> = { ...filter };
     if (cursor) {
-      queryFilter[sortField] = sortOrder === 1 ? { $gt: cursor } : { $lt: cursor };
+      const operator = sortOrder === 1 ? '$gt' : '$lt';
+      let value: string | Date = cursor;
+      let messageId: string | null = null;
+      try {
+        const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8')) as {
+          value?: string;
+          messageId?: string;
+        };
+        if (typeof decoded.value === 'string' && typeof decoded.messageId === 'string') {
+          value = decoded.value;
+          messageId = decoded.messageId;
+        }
+      } catch {
+        // Legacy cursors were the raw sort value.
+      }
+      if (sortField === 'createdAt' || sortField === 'updatedAt') {
+        value = new Date(value);
+      }
+
+      const cursorFilter: FilterQuery<IMessage> = messageId
+        ? {
+            $or: [
+              { [sortField]: { [operator]: value } },
+              { [sortField]: value, messageId: { [operator]: messageId } },
+            ],
+          }
+        : { [sortField]: { [operator]: value } };
+      queryFilter = { $and: [filter, cursorFilter] };
     }
     const messages = await Message.find(queryFilter)
-      .sort({ [sortField]: sortOrder })
+      .sort({ [sortField]: sortOrder, messageId: sortOrder })
       .limit(limit + 1)
       .lean<IMessage[]>();
 
@@ -423,7 +450,9 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
       const last = messages[messages.length - 1];
       const cursorValue =
         sortField === 'createdAt' ? last.createdAt : last[sortField as keyof IMessage];
-      nextCursor = String(cursorValue ?? '');
+      nextCursor = Buffer.from(
+        JSON.stringify({ value: String(cursorValue ?? ''), messageId: last.messageId }),
+      ).toString('base64');
     }
     return { messages, nextCursor };
   }

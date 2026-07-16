@@ -24,6 +24,8 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 jest.mock('@librechat/api', () => ({
   isEnabled: jest.fn(() => false),
+  isUserDisabled: jest.fn((user) => user?.isDisabled === true),
+  DISABLED_USER_MESSAGE: 'This account has been disabled.',
   findOpenIDUser: jest.fn(),
   getOpenIdEmail: jest.requireActual('@librechat/api').getOpenIdEmail,
   getOpenIdIssuer: jest.fn(() => 'https://issuer.example.com'),
@@ -233,6 +235,20 @@ describe('openIdJwtStrategy – token source handling', () => {
 
     // Initialize the strategy so capturedVerifyCallback is set
     openIdJwtLogin(mockOpenIdConfig);
+  });
+
+  it('rejects a disabled OpenID user', async () => {
+    findOpenIDUser.mockResolvedValue({
+      user: { ...baseUser, isDisabled: true },
+      error: null,
+      migration: false,
+    });
+    const req = { headers: { authorization: 'Bearer tok' }, session: {} };
+
+    const { user, info } = await invokeVerify(req, payload);
+
+    expect(user).toBe(false);
+    expect(info).toEqual({ message: 'This account has been disabled.' });
   });
 
   it('should read all tokens from session when available', async () => {

@@ -24,6 +24,8 @@ jest.mock('~/models', () => ({
 jest.mock('@librechat/api', () => ({
   math: jest.fn((value, fallback) => fallback),
   isEnabled: jest.fn(),
+  isUserDisabled: jest.fn((user) => user?.isDisabled === true),
+  DISABLED_USER_MESSAGE: 'This account has been disabled.',
   findOpenIDUser: jest.fn(),
   getOpenIdIssuer: jest.fn(() => 'https://issuer.example.com'),
   buildOpenIDRefreshParams: jest.fn(() => {

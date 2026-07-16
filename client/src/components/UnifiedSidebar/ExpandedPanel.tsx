@@ -74,7 +74,7 @@ function ExpandedPanel({ links, onCollapse }: { links: NavLink[]; onCollapse: ()
       className="flex h-full w-full min-w-0 flex-col bg-surface-primary-alt"
       data-testid="conversation-sidebar"
     >
-      <div className="flex h-[52px] flex-shrink-0 items-center justify-between border-b border-border-light px-3">
+      <div className="grid h-[52px] flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_36px] items-center border-b border-border-light px-3">
         <TooltipAnchor
           side="right"
           description={toggleSidebarHint}
@@ -93,6 +93,12 @@ function ExpandedPanel({ links, onCollapse }: { links: NavLink[]; onCollapse: ()
               <Sidebar aria-hidden="true" className="h-5 w-5 text-text-primary" />
             </Button>
           }
+        />
+        <img
+          src="/assets/likechat-wordmark.png"
+          alt={localize('com_ui_likechat_logo')}
+          data-testid="sidebar-brand-logo"
+          className="mx-auto h-8 max-w-[150px] object-contain"
         />
         <NewChatButton setActive={setActive} />
       </div>

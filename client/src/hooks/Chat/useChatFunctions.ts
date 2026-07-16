@@ -39,6 +39,7 @@ import store, { useGetEphemeralAgent } from '~/store';
 import { startupConfigKey } from '~/data-provider';
 import useUserKey from '~/hooks/Input/useUserKey';
 import { useAuthContext } from '~/hooks';
+import { useAgentsMapContext } from '~/Providers';
 
 const logChatRequest = (request: Record<string, unknown>) => {
   logger.log('=====================================\nAsk function called with:');
@@ -206,6 +207,7 @@ export default function useChatFunctions({
   const navigate = useNavigate();
   const getSender = useGetSender();
   const { user } = useAuthContext();
+  const agentsMap = useAgentsMapContext();
   const queryClient = useQueryClient();
   const setFilesToDelete = useSetFilesToDelete();
   const getEphemeralAgent = useGetEphemeralAgent();
@@ -370,8 +372,20 @@ export default function useChatFunctions({
       conversationId === Constants.NEW_CONVO
         ? getRouteChatProjectId()
         : (conversation?.chatProjectId ?? null);
-    const conversationForPayload =
+    const baseConversation =
       chatProjectId != null ? { ...(conversation ?? {}), chatProjectId } : (conversation ?? {});
+    const agent = conversation?.agent_id ? agentsMap?.[conversation.agent_id] : undefined;
+    const allowedAgentModels = Array.isArray(agent?.allowed_models)
+      ? agent.allowed_models.filter(
+          (model): model is string => typeof model === 'string' && model.length > 0,
+        )
+      : [];
+    const conversationForPayload =
+      isAgentsEndpoint(conversation?.endpoint) &&
+      allowedAgentModels.length > 0 &&
+      !allowedAgentModels.includes(conversation?.agent_model ?? '')
+        ? { ...baseConversation, agent_model: allowedAgentModels[0] }
+        : baseConversation;
 
     // construct the query message
     // this is not a real messageId, it is used as placeholder before real messageId returned

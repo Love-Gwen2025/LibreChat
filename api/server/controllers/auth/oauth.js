@@ -5,6 +5,8 @@ const {
   getAdminPanelUrl,
   isAdminPanelRedirect,
   generateAdminExchangeCode,
+  isUserDisabled,
+  DISABLED_USER_MESSAGE,
 } = require('@librechat/api');
 const { syncUserEntraGroupMemberships } = require('~/server/services/PermissionService');
 const { setAuthTokens, setOpenIDAuthTokens } = require('~/server/services/AuthService');
@@ -34,6 +36,9 @@ function createOAuthHandler(redirectUri = domains.client) {
       await checkBan(req, res);
       if (req.banned) {
         return;
+      }
+      if (isUserDisabled(req.user)) {
+        return res.status(403).send(DISABLED_USER_MESSAGE);
       }
 
       /** Check if this is an admin panel redirect (cross-origin) */

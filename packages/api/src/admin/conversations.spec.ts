@@ -70,6 +70,7 @@ function createDeps(overrides: Partial<AdminConversationsDeps> = {}): AdminConve
     getConvo: jest.fn().mockResolvedValue(mockConvo()),
     deleteConvos: jest.fn().mockResolvedValue({ deletedCount: 1, messages: { deletedCount: 5 } }),
     getMessages: jest.fn().mockResolvedValue([]),
+    getMessagesByCursor: jest.fn().mockResolvedValue({ messages: [], nextCursor: null }),
     countMessages: jest.fn().mockResolvedValue(0),
     ...overrides,
   };
@@ -157,7 +158,61 @@ describe('createAdminConversationsHandlers', () => {
       expect(deps.getConvosByCursor).toHaveBeenCalledWith(validUserId, {
         cursor: 'c1',
         limit: 100,
+        isArchived: null,
+        updatedAfter: undefined,
+        updatedBefore: undefined,
       });
+    });
+
+    it('applies an updated-at range to both the page and total', async () => {
+      const deps = createDeps();
+      const handlers = createAdminConversationsHandlers(deps);
+      const { req, res } = createReqRes({
+        params: { userId: validUserId },
+        query: {
+          startDate: '2026-07-01T00:00:00.000Z',
+          endDate: '2026-07-15T23:59:59.999Z',
+        },
+      });
+
+      await handlers.listConversations(req, res);
+
+      expect(deps.getConvosByCursor).toHaveBeenCalledWith(
+        validUserId,
+        expect.objectContaining({
+          updatedAfter: new Date('2026-07-01T00:00:00.000Z'),
+          updatedBefore: new Date('2026-07-15T23:59:59.999Z'),
+        }),
+      );
+      expect(deps.countConversations).toHaveBeenCalledWith({
+        user: validUserId,
+        updatedAt: {
+          $gte: new Date('2026-07-01T00:00:00.000Z'),
+          $lte: new Date('2026-07-15T23:59:59.999Z'),
+        },
+      });
+    });
+
+    it('rejects an invalid or reversed updated-at range', async () => {
+      const deps = createDeps();
+      const handlers = createAdminConversationsHandlers(deps);
+      const invalid = createReqRes({
+        params: { userId: validUserId },
+        query: { startDate: 'not-a-date' },
+      });
+      await handlers.listConversations(invalid.req, invalid.res);
+      expect(invalid.status).toHaveBeenCalledWith(400);
+
+      const reversed = createReqRes({
+        params: { userId: validUserId },
+        query: {
+          startDate: '2026-07-16T00:00:00.000Z',
+          endDate: '2026-07-15T00:00:00.000Z',
+        },
+      });
+      await handlers.listConversations(reversed.req, reversed.res);
+      expect(reversed.status).toHaveBeenCalledWith(400);
+      expect(deps.getConvosByCursor).not.toHaveBeenCalled();
     });
 
     it('returns 400 for an invalid user id', async () => {
@@ -198,7 +253,11 @@ describe('createAdminConversationsHandlers', () => {
   describe('getConversationMessages', () => {
     it('returns the conversation with its messages', async () => {
       const deps = createDeps({
-        getMessages: jest.fn().mockResolvedValue([mockMessage(), mockMessage({ messageId: 'm2' })]),
+        getMessagesByCursor: jest.fn().mockResolvedValue({
+          messages: [mockMessage(), mockMessage({ messageId: 'm2' })],
+          nextCursor: 'older',
+        }),
+        countMessages: jest.fn().mockResolvedValue(2),
       });
       const handlers = createAdminConversationsHandlers(deps);
       const { req, res, status, json } = createReqRes({
@@ -207,7 +266,10 @@ describe('createAdminConversationsHandlers', () => {
 
       await handlers.getConversationMessages(req, res);
 
-      expect(deps.getMessages).toHaveBeenCalledWith({ conversationId, user: validUserId });
+      expect(deps.getMessagesByCursor).toHaveBeenCalledWith(
+        { conversationId, user: validUserId },
+        { cursor: null, limit: 25, sortField: 'createdAt', sortOrder: -1 },
+      );
       expect(status).toHaveBeenCalledWith(200);
       expect(json).toHaveBeenCalledWith({
         conversation: expect.objectContaining({ conversationId, messageCount: 2 }),
@@ -215,7 +277,66 @@ describe('createAdminConversationsHandlers', () => {
           expect.objectContaining({ messageId: 'm1', text: 'hello', isCreatedByUser: true }),
           expect.objectContaining({ messageId: 'm2' }),
         ],
+        nextCursor: 'older',
+        total: 2,
       });
+    });
+
+    it('returns only safe image metadata from message files and attachments', async () => {
+      const deps = createDeps({
+        getMessagesByCursor: jest.fn().mockResolvedValue({
+          messages: [
+            mockMessage({
+              files: [
+                {
+                  file_id: 'image-file-1',
+                  filename: 'result.png',
+                  type: 'image/png',
+                  filepath: '/private/storage/result.png',
+                  width: 1024,
+                  height: 1024,
+                },
+              ],
+              attachments: [
+                {
+                  file_id: 'legacy-image-1',
+                  filename: 'legacy.png',
+                  type: 'image',
+                },
+                { file_id: 'document-1', filename: 'notes.pdf', type: 'application/pdf' },
+              ],
+            }),
+          ],
+          nextCursor: null,
+        }),
+        countMessages: jest.fn().mockResolvedValue(1),
+      });
+      const handlers = createAdminConversationsHandlers(deps);
+      const { req, res, json } = createReqRes({
+        params: { userId: validUserId, conversationId },
+      });
+
+      await handlers.getConversationMessages(req, res);
+
+      const response = json.mock.calls[0][0];
+      expect(response.messages[0].images).toEqual([
+        {
+          fileId: 'image-file-1',
+          filename: 'result.png',
+          mimeType: 'image/png',
+          width: 1024,
+          height: 1024,
+          url: `/api/admin/conversations/${validUserId}/${conversationId}/images/image-file-1`,
+        },
+        {
+          fileId: 'legacy-image-1',
+          filename: 'legacy.png',
+          mimeType: 'image/*',
+          url: `/api/admin/conversations/${validUserId}/${conversationId}/images/legacy-image-1`,
+        },
+      ]);
+      expect(JSON.stringify(response)).not.toContain('/private/storage/result.png');
+      expect(JSON.stringify(response)).not.toContain('document-1');
     });
 
     it('rejects a malformed conversation id', async () => {

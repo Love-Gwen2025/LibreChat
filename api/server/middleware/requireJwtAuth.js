@@ -11,6 +11,8 @@ const {
   formatAuthLogMessage,
   maybeRefreshCloudFrontAuthCookiesMiddleware,
   recordRumProxyRequest,
+  isUserDisabled,
+  DISABLED_USER_MESSAGE,
 } = require('@librechat/api');
 
 const hasPassportStrategy = (strategy) =>
@@ -180,6 +182,9 @@ const requireJwtAuth = (req, res, next) => {
         logAuthenticationFailure({ strategy, info, status: 401, err });
         return res.status(401).json({ message: 'Unauthorized' });
       }
+      if (isUserDisabled(user)) {
+        return res.status(403).json({ message: DISABLED_USER_MESSAGE });
+      }
       req.user = user;
       req.authStrategy = strategy;
       logFallbackSuccess(strategy);
@@ -206,6 +211,10 @@ const requireRumProxyAuth = (req, res, next) => {
   };
 
   const finishAuthentication = (strategy, user) => {
+    if (isUserDisabled(user)) {
+      dropTelemetry();
+      return;
+    }
     req.user = user;
     req.authStrategy = strategy;
     next();

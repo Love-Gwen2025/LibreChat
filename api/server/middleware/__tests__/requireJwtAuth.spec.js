@@ -213,6 +213,8 @@ jest.mock('@librechat/api', () => {
     normalizeContextValue(req.headers?.['x-correlation-id']);
   return {
     isEnabled: jest.fn(() => false),
+    isUserDisabled: jest.fn((user) => user?.isDisabled === true),
+    DISABLED_USER_MESSAGE: 'This account has been disabled.',
     recordRumProxyRequest: jest.fn(),
     getAuthFailureReason,
     getAuthFailureErrorName,
@@ -383,6 +385,20 @@ describe('requireJwtAuth tenant context chaining', () => {
       }),
     );
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 before entering request context for a disabled user', () => {
+    const req = mockReq({ id: 'user-disabled', tenantId: 'tenant-abc', isDisabled: true });
+    const res = mockRes();
+    const next = jest.fn();
+
+    requireJwtAuth(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ message: 'This account has been disabled.' });
+    expect(next).not.toHaveBeenCalled();
+    expect(maybeRefreshCloudFrontAuthCookiesMiddleware).not.toHaveBeenCalled();
+    expect(getTenantId()).toBeUndefined();
   });
 
   it('logs OpenID JWT expiry when JWT fallback succeeds', () => {

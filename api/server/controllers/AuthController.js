@@ -8,6 +8,8 @@ const {
   findOpenIDUser,
   getOpenIdIssuer,
   buildOpenIDRefreshParams,
+  isUserDisabled,
+  DISABLED_USER_MESSAGE,
 } = require('@librechat/api');
 const {
   requestPasswordReset,
@@ -175,6 +177,9 @@ const refreshController = async (req, res) => {
       if (reuseUserId) {
         const user = await getUserById(reuseUserId, AUTH_REFRESH_USER_PROJECTION);
         if (user) {
+          if (isUserDisabled(user)) {
+            return res.status(403).send(DISABLED_USER_MESSAGE);
+          }
           const cloudFrontCookiesSet = setCloudFrontAuthCookies(req, res, user);
           logger.debug('[refreshController] OpenID session token reused', {
             token_type: reusableSessionToken.type,
@@ -227,6 +232,9 @@ const refreshController = async (req, res) => {
         );
         return res.status(401).redirect('/login');
       }
+      if (isUserDisabled(user)) {
+        return res.status(403).send(DISABLED_USER_MESSAGE);
+      }
 
       // Handle migration: update user with openidId if found by email without openidId
       // Also handle case where user has mismatched openidId (e.g., after database switch)
@@ -266,6 +274,9 @@ const refreshController = async (req, res) => {
     const user = await getUserById(payload.id, AUTH_REFRESH_USER_PROJECTION);
     if (!user) {
       return res.status(401).redirect('/login');
+    }
+    if (isUserDisabled(user)) {
+      return res.status(403).send(DISABLED_USER_MESSAGE);
     }
 
     const userId = payload.id;

@@ -1319,6 +1319,26 @@ describe('Conversation Operations', () => {
       expect(returnedIds).toContain(convo3!.conversationId);
     });
 
+    it('should paginate conversations with identical updatedAt values without gaps', async () => {
+      const sameTime = new Date('2026-01-01T12:00:00.000Z');
+      for (let i = 0; i < 30; i++) {
+        await createConvoWithTimestamps(i, sameTime, sameTime);
+      }
+
+      const page1 = await getConvosByCursor('user123', { limit: 25 });
+      const page2 = await getConvosByCursor('user123', {
+        limit: 25,
+        cursor: page1.nextCursor,
+      });
+      const ids = [...page1.conversations, ...page2.conversations].map(
+        (conversation) => conversation.conversationId,
+      );
+
+      expect(page1.conversations).toHaveLength(25);
+      expect(page2.conversations).toHaveLength(5);
+      expect(new Set(ids).size).toBe(30);
+    });
+
     it('should handle cursor pagination with conversations updated during pagination', async () => {
       // Simulate the scenario where a conversation is updated between page fetches
       const baseTime = new Date('2026-01-01T00:00:00.000Z');

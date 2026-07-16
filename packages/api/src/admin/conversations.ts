@@ -33,7 +33,13 @@ export interface AdminConversationsDeps {
   ) => Promise<IUser[]>;
   getConvosByCursor: (
     user: string,
-    options?: { cursor?: string | null; limit?: number },
+    options?: {
+      cursor?: string | null;
+      limit?: number;
+      isArchived?: boolean | null;
+      updatedAfter?: Date;
+      updatedBefore?: Date;
+    },
   ) => Promise<{ conversations: IConversation[]; nextCursor: string | null }>;
   countConversations: (filter: FilterQuery<IConversation>) => Promise<number>;
   getConvo: (user: string, conversationId: string) => Promise<IConversation | null>;
@@ -44,7 +50,17 @@ export interface AdminConversationsDeps {
   getMessages: (
     filter: FilterQuery<IMessage>,
     fieldsToSelect?: string | null,
+    options?: { limit?: number; sort?: Record<string, 1 | -1> | false },
   ) => Promise<IMessage[]>;
+  getMessagesByCursor: (
+    filter: FilterQuery<IMessage>,
+    options?: {
+      sortField?: string;
+      sortOrder?: 1 | -1;
+      limit?: number;
+      cursor?: string | null;
+    },
+  ) => Promise<{ messages: IMessage[]; nextCursor: string | null }>;
   countMessages: (filter: FilterQuery<IMessage>) => Promise<number>;
 }
 
@@ -69,7 +85,52 @@ function toListItem(convo: IConversation, messageCount = 0): AdminConversationLi
   };
 }
 
-function toMessageItem(message: IMessage): AdminConversationMessage {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getMessageImages(message: IMessage, userId: string, conversationId: string) {
+  const candidates = [message.files, message.attachments]
+    .flatMap((items) => (Array.isArray(items) ? items : []))
+    .filter(isRecord);
+  const seen = new Set<string>();
+
+  return candidates.flatMap((file) => {
+    const fileId = typeof file.file_id === 'string' ? file.file_id : '';
+    const type = typeof file.type === 'string' ? file.type : '';
+    const declaredMimeType = typeof file.mimeType === 'string' ? file.mimeType : '';
+    let mimeType = '';
+    if (declaredMimeType.startsWith('image/')) {
+      mimeType = declaredMimeType;
+    } else if (type.startsWith('image/')) {
+      mimeType = type;
+    } else if (type === 'image') {
+      mimeType = 'image/*';
+    }
+    if (!fileId || !/^[A-Za-z0-9_-]{1,128}$/.test(fileId) || !mimeType || seen.has(fileId)) {
+      return [];
+    }
+    seen.add(fileId);
+
+    return [
+      {
+        fileId,
+        filename: typeof file.filename === 'string' ? file.filename : 'image',
+        mimeType,
+        ...(typeof file.width === 'number' && { width: file.width }),
+        ...(typeof file.height === 'number' && { height: file.height }),
+        ...(typeof file.context === 'string' && { context: file.context }),
+        url: `/api/admin/conversations/${encodeURIComponent(userId)}/${encodeURIComponent(conversationId)}/images/${encodeURIComponent(fileId)}`,
+      },
+    ];
+  });
+}
+
+function toMessageItem(
+  message: IMessage,
+  userId: string,
+  conversationId: string,
+): AdminConversationMessage {
   return {
     messageId: message.messageId,
     parentMessageId: message.parentMessageId,
@@ -81,7 +142,19 @@ function toMessageItem(message: IMessage): AdminConversationMessage {
     model: message.model,
     endpoint: message.endpoint,
     createdAt: message.createdAt?.toISOString(),
+    images: getMessageImages(message, userId, conversationId),
   };
+}
+
+function parseDate(raw: unknown): Date | null | undefined {
+  if (raw === undefined || raw === null || raw === '') {
+    return undefined;
+  }
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const value = new Date(raw);
+  return Number.isNaN(value.getTime()) ? null : value;
 }
 
 export function createAdminConversationsHandlers(deps: AdminConversationsDeps): {
@@ -97,6 +170,7 @@ export function createAdminConversationsHandlers(deps: AdminConversationsDeps): 
     getConvo,
     deleteConvos,
     getMessages,
+    getMessagesByCursor,
     countMessages,
   } = deps;
 
@@ -140,10 +214,32 @@ export function createAdminConversationsHandlers(deps: AdminConversationsDeps): 
       const rawCursor = req.query.cursor;
       const cursor = typeof rawCursor === 'string' && rawCursor ? rawCursor : null;
       const limit = parseLimit(req.query.limit);
+      const updatedAfter = parseDate(req.query.startDate);
+      const updatedBefore = parseDate(req.query.endDate);
+      if (updatedAfter === null || updatedBefore === null) {
+        return res.status(400).json({ error: 'startDate and endDate must be valid ISO dates' });
+      }
+      if (updatedAfter && updatedBefore && updatedAfter > updatedBefore) {
+        return res.status(400).json({ error: 'startDate must not be after endDate' });
+      }
+
+      const dateFilter = {
+        ...(updatedAfter && { $gte: updatedAfter }),
+        ...(updatedBefore && { $lte: updatedBefore }),
+      };
 
       const [{ conversations, nextCursor }, total] = await Promise.all([
-        getConvosByCursor(userId, { cursor, limit }),
-        countConversations({ user: userId }),
+        getConvosByCursor(userId, {
+          cursor,
+          limit,
+          isArchived: null,
+          updatedAfter,
+          updatedBefore,
+        }),
+        countConversations({
+          user: userId,
+          ...(Object.keys(dateFilter).length > 0 && { updatedAt: dateFilter }),
+        }),
       ]);
 
       const messageCounts = await countMessagesByConversation(
@@ -179,11 +275,22 @@ export function createAdminConversationsHandlers(deps: AdminConversationsDeps): 
         return res.status(404).json({ error: 'Conversation not found' });
       }
 
-      const messages = await getMessages({ conversationId, user: userId });
+      const rawCursor = req.query.cursor;
+      const cursor = typeof rawCursor === 'string' && rawCursor ? rawCursor : null;
+      const limit = parseLimit(req.query.limit);
+      const [{ messages, nextCursor }, total] = await Promise.all([
+        getMessagesByCursor(
+          { conversationId, user: userId },
+          { cursor, limit, sortField: 'createdAt', sortOrder: -1 },
+        ),
+        countMessages({ conversationId, user: userId }),
+      ]);
 
       return res.status(200).json({
-        conversation: toListItem(convo, messages.length),
-        messages: messages.map(toMessageItem),
+        conversation: toListItem(convo, total),
+        messages: messages.map((message) => toMessageItem(message, userId, conversationId)),
+        nextCursor,
+        total,
       });
     } catch (error) {
       logger.error('[adminConversations] getConversationMessages error:', error);

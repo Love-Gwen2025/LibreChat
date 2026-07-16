@@ -25,6 +25,7 @@ let createTransaction: ReturnType<typeof createTransactionMethods>['createTransa
 let createStructuredTransaction: ReturnType<
   typeof createTransactionMethods
 >['createStructuredTransaction'];
+let getUserTokenUsage: ReturnType<typeof createTransactionMethods>['getUserTokenUsage'];
 let getMultiplier: ReturnType<typeof createTxMethods>['getMultiplier'];
 let getCacheMultiplier: ReturnType<typeof createTxMethods>['getCacheMultiplier'];
 
@@ -50,6 +51,7 @@ beforeAll(async () => {
   });
   createTransaction = transactionMethods.createTransaction;
   createStructuredTransaction = transactionMethods.createStructuredTransaction;
+  getUserTokenUsage = transactionMethods.getUserTokenUsage;
 
   const spendMethods = createSpendTokensMethods(mongoose, {
     createTransaction: transactionMethods.createTransaction,
@@ -68,6 +70,37 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await mongoose.connection.dropDatabase();
+});
+
+describe('Admin token usage aggregation', () => {
+  test('returns prompt, completion, today, and daily totals while excluding credits', async () => {
+    const userId = new mongoose.Types.ObjectId();
+    const otherUserId = new mongoose.Types.ObjectId();
+    const now = new Date();
+    const older = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    await Transaction.create([
+      { user: userId, tokenType: 'prompt', rawAmount: -100, createdAt: now },
+      { user: userId, tokenType: 'completion', rawAmount: -50, createdAt: now },
+      { user: userId, tokenType: 'prompt', rawAmount: -20, createdAt: older },
+      { user: userId, tokenType: 'credits', rawAmount: 10_000, createdAt: now },
+      { user: otherUserId, tokenType: 'prompt', rawAmount: -999, createdAt: now },
+    ]);
+
+    const usage = await getUserTokenUsage({
+      userId: userId.toString(),
+      start: new Date(older.getTime() - 1_000),
+      end: new Date(now.getTime() + 1_000),
+      timezone: 'UTC',
+    });
+
+    expect(usage).toMatchObject({
+      totalTokens: 170,
+      totalPromptTokens: 120,
+      totalCompletionTokens: 50,
+      todayTokens: 150,
+    });
+    expect(usage.daily.reduce((sum, day) => sum + day.totalTokens, 0)).toBe(170);
+  });
 });
 
 describe('Regular Token Spending Tests', () => {

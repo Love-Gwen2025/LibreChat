@@ -62,6 +62,10 @@ import {
   defaultRate,
 } from './tx';
 import { createTransactionMethods, type TransactionMethods } from './transaction';
+import {
+  createImageGenerationTaskMethods,
+  type ImageGenerationTaskMethods,
+} from './imageGenerationTask';
 import { createSpendTokensMethods, type SpendTokensMethods } from './spendTokens';
 import { createPromptMethods, type PromptMethods, type PromptDeps } from './prompt';
 import {
@@ -140,6 +144,7 @@ export type AllMethods = UserMethods &
   ChatProjectMethods &
   TxMethods &
   TransactionMethods &
+  ImageGenerationTaskMethods &
   SpendTokensMethods &
   PromptMethods &
   SkillMethods &
@@ -270,6 +275,7 @@ export function createMethods(
     /* Tier 3 */
     ...txMethods,
     ...transactionMethods,
+    ...createImageGenerationTaskMethods(mongoose),
     ...spendTokensMethods,
     ...promptMethods,
     ...skillMethods,
@@ -312,6 +318,7 @@ export type {
   ChatProjectMethods,
   TxMethods,
   TransactionMethods,
+  ImageGenerationTaskMethods,
   SpendTokensMethods,
   PromptMethods,
   SkillMethods,

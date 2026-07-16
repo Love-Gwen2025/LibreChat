@@ -21,6 +21,7 @@ let mongoServer: InstanceType<typeof MongoMemoryServer>;
 let Message: mongoose.Model<IMessage>;
 let saveMessage: ReturnType<typeof createMessageMethods>['saveMessage'];
 let getMessages: ReturnType<typeof createMessageMethods>['getMessages'];
+let getMessagesByCursor: ReturnType<typeof createMessageMethods>['getMessagesByCursor'];
 let updateMessage: ReturnType<typeof createMessageMethods>['updateMessage'];
 let deleteMessages: ReturnType<typeof createMessageMethods>['deleteMessages'];
 let bulkSaveMessages: ReturnType<typeof createMessageMethods>['bulkSaveMessages'];
@@ -39,6 +40,7 @@ beforeAll(async () => {
   const methods = createMessageMethods(mongoose);
   saveMessage = methods.saveMessage;
   getMessages = methods.getMessages;
+  getMessagesByCursor = methods.getMessagesByCursor;
   updateMessage = methods.updateMessage;
   deleteMessages = methods.deleteMessages;
   bulkSaveMessages = methods.bulkSaveMessages;
@@ -123,6 +125,44 @@ describe('Message Operations', () => {
         'Invalid conversation ID: invalid-id (context: message-save-test)',
       );
       expect(logger.info).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getMessagesByCursor', () => {
+    it('paginates identical timestamps without duplicates or gaps', async () => {
+      const conversationId = uuidv4();
+      const createdAt = new Date('2026-07-15T10:00:00.000Z');
+      await Message.collection.insertMany(
+        Array.from({ length: 30 }, (_, index) => ({
+          messageId: `message-${String(index).padStart(2, '0')}`,
+          conversationId,
+          user: 'user123',
+          text: `Message ${index}`,
+          createdAt,
+          updatedAt: createdAt,
+        })),
+      );
+
+      const firstPage = await getMessagesByCursor(
+        { conversationId, user: 'user123' },
+        { limit: 25, sortField: 'createdAt', sortOrder: -1 },
+      );
+      const secondPage = await getMessagesByCursor(
+        { conversationId, user: 'user123' },
+        {
+          limit: 25,
+          sortField: 'createdAt',
+          sortOrder: -1,
+          cursor: firstPage.nextCursor,
+        },
+      );
+      const ids = [...firstPage.messages, ...secondPage.messages].map(
+        (message) => message.messageId,
+      );
+
+      expect(firstPage.messages).toHaveLength(25);
+      expect(secondPage.messages).toHaveLength(5);
+      expect(new Set(ids).size).toBe(30);
     });
   });
 

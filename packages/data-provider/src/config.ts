@@ -640,6 +640,16 @@ const modelItemSchema = z.union([
   }),
 ]);
 
+export const openAIEndpointSchema = baseEndpointSchema.extend({
+  title: z.string().optional(),
+  models: z
+    .object({
+      default: z.array(modelItemSchema).min(1),
+      fetch: z.boolean().optional(),
+    })
+    .optional(),
+});
+
 export const assistantEndpointSchema = baseEndpointSchema.merge(
   z.object({
     /* assistants specific */
@@ -1865,7 +1875,7 @@ export const configSchema = z.object({
     .object({
       allowedAddresses: allowedAddressesSchema,
       all: baseEndpointSchema.omit({ baseURL: true }).optional(),
-      [EModelEndpoint.openAI]: baseEndpointSchema.optional(),
+      [EModelEndpoint.openAI]: openAIEndpointSchema.optional(),
       [EModelEndpoint.google]: baseEndpointSchema.optional(),
       [EModelEndpoint.anthropic]: anthropicEndpointSchema.optional(),
       [EModelEndpoint.azureOpenAI]: azureEndpointSchema.optional(),
@@ -1969,6 +1979,9 @@ export const alternateName = {
 };
 
 const sharedOpenAIModels = [
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-5.6-luna',
   'gpt-5.5',
   'gpt-5.5-pro',
   'chat-latest',

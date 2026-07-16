@@ -78,10 +78,12 @@ const mockCleanupMCPRequestContextForReq = jest.fn(async (req) => {
 
 jest.mock('@librechat/data-schemas', () => ({
   logger: mockLogger,
+  redactMessage: (message, limit) => message.slice(0, limit),
 }));
 
 jest.mock('@librechat/api', () => ({
   sendEvent: jest.fn(),
+  getBuiltinImageAgentId: jest.fn(() => null),
   getViolationInfo: jest.fn(),
   buildMessageFiles: jest.fn(() => []),
   resolveTitleTiming: jest.fn(() => 'immediate'),

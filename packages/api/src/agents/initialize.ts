@@ -1018,13 +1018,19 @@ export async function initializeAgent(
     llmConfig?.maxTokens as number | undefined,
     0,
   );
+  const modelMaxContextTokens = getModelMaxTokens(
+    tokensModel ?? '',
+    providerEndpointMap[overrideProvider as keyof typeof providerEndpointMap],
+    options.endpointTokenConfig,
+  );
+  const configuredMaxContextNum = Number(maxContextTokens);
+  const configuredMaxContextTokens =
+    Number.isFinite(configuredMaxContextNum) && configuredMaxContextNum > 0
+      ? configuredMaxContextNum
+      : undefined;
   const agentMaxContextTokens = optionalChainWithEmptyCheck(
-    maxContextTokens,
-    getModelMaxTokens(
-      tokensModel ?? '',
-      providerEndpointMap[overrideProvider as keyof typeof providerEndpointMap],
-      options.endpointTokenConfig,
-    ),
+    modelMaxContextTokens,
+    configuredMaxContextTokens,
     DEFAULT_MAX_CONTEXT_TOKENS,
   );
 
@@ -1248,6 +1254,14 @@ export async function initializeAgent(
   const agentMaxContextNum = Number(agentMaxContextTokens) || DEFAULT_MAX_CONTEXT_TOKENS;
   const maxOutputTokensNum = Number(maxOutputTokens) || 0;
   const baseContextTokens = Math.max(0, agentMaxContextNum - maxOutputTokensNum);
+  const derivedMaxContextTokens = Math.max(
+    1024,
+    Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO)),
+  );
+  const effectiveMaxContextTokens =
+    configuredMaxContextTokens != null && modelMaxContextTokens == null
+      ? configuredMaxContextTokens
+      : Math.min(configuredMaxContextTokens ?? derivedMaxContextTokens, derivedMaxContextTokens);
 
   const toMongoFiles = (files: Array<TFile | undefined> | undefined): IMongoFile[] =>
     (files ?? []).filter((a): a is TFile => a != null).map((a) => a as unknown as IMongoFile);
@@ -1310,10 +1324,7 @@ export async function initializeAgent(
     useLegacyContent: !!options.useLegacyContent,
     tools: (tools ?? []) as GenericTool[] & string[],
     maxToolResultChars: maxToolResultCharsResolved,
-    maxContextTokens:
-      maxContextTokens != null && maxContextTokens > 0
-        ? maxContextTokens
-        : Math.max(1024, Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO))),
+    maxContextTokens: effectiveMaxContextTokens,
     primedCodeFiles,
     endpointTokenConfig: options.endpointTokenConfig,
   };

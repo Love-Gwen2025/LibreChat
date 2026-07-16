@@ -38,7 +38,6 @@ import type { IMongoFile } from '@librechat/data-schemas';
 import type { Agent } from 'librechat-data-provider';
 import type { ServerRequest, InitializeResultBase, EndpointTokenConfig } from '~/types';
 import type { InitializeAgentDbMethods } from '../initialize';
-import { DEFAULT_MAX_CONTEXT_TOKENS } from '../initialize';
 
 // Mock logger — `format` must be a callable factory so @librechat/data-schemas
 // dist module-load completes cleanly; see api/test/__mocks__/logger.js.
@@ -947,10 +946,11 @@ describe('initializeAgent — maxContextTokens', () => {
   });
 
   it('falls back to formula when maxContextTokens is 0', async () => {
+    const modelDefault = 200000;
     const maxOutputTokens = 4096;
     const { agent, req, res, loadTools, db } = createMocks({
       maxContextTokens: 0,
-      modelDefault: 200000,
+      modelDefault,
       maxOutputTokens,
     });
 
@@ -971,7 +971,7 @@ describe('initializeAgent — maxContextTokens', () => {
     );
 
     expect(result.maxContextTokens).not.toBe(0);
-    const expected = Math.round((DEFAULT_MAX_CONTEXT_TOKENS - maxOutputTokens) * 0.95);
+    const expected = Math.round((modelDefault - maxOutputTokens) * 0.95);
     expect(result.maxContextTokens).toBe(expected);
   });
 
@@ -1029,6 +1029,35 @@ describe('initializeAgent — maxContextTokens', () => {
 
     // Should NOT be overridden to Math.round((128000 - 4096) * 0.95) = 117,709
     expect(result.maxContextTokens).toBe(userValue);
+  });
+
+  it('clamps a stale configured value to the current model-derived limit', async () => {
+    const staleValue = 997500;
+    const modelDefault = 250000;
+    const maxOutputTokens = 4096;
+    const { agent, req, res, loadTools, db } = createMocks({
+      maxContextTokens: staleValue,
+      modelDefault,
+      maxOutputTokens,
+    });
+
+    const result = await initializeAgent(
+      {
+        req,
+        res,
+        agent,
+        loadTools,
+        endpointOption: {
+          endpoint: EModelEndpoint.agents,
+          model_parameters: { maxContextTokens: staleValue },
+        },
+        allowedProviders: new Set([Providers.OPENAI]),
+        isInitialAgent: true,
+      },
+      db,
+    );
+
+    expect(result.maxContextTokens).toBe(Math.round((modelDefault - maxOutputTokens) * 0.95));
   });
 
   it('sets baseContextTokens to agentMaxContextNum minus maxOutputTokensNum', async () => {

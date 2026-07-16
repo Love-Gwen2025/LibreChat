@@ -20,6 +20,7 @@ const {
   createTokenCounter,
   applyContextToAgent,
   isMemoryAgentEnabled,
+  isContextWindowError,
   recordCollectedUsage,
   sendEvent,
   computeUsageCostUSD,
@@ -73,6 +74,7 @@ const {
 } = require('@librechat/agents');
 const {
   Constants,
+  ErrorTypes,
   UsageEvents,
   Permissions,
   VisionModes,
@@ -263,7 +265,6 @@ class AgentClient extends BaseClient {
           modelLabel: this.options.modelLabel,
           resendFiles: this.options.resendFiles,
           imageDetail: this.options.imageDetail,
-          maxContextTokens: this.maxContextTokens,
         },
         // TODO: PARSE OPTIONS BY PROVIDER, MAY CONTAIN SENSITIVE DATA
         runOptions,
@@ -1679,6 +1680,25 @@ class AgentClient extends BaseClient {
           '[api/server/controllers/agents/client.js #sendCompletion] Operation aborted by user',
           { conversationId: this.conversationId, name: err?.name, code: err?.code },
         );
+      } else if (isContextWindowError(err)) {
+        logger.warn(
+          '[api/server/controllers/agents/client.js #sendCompletion] Context window exceeded',
+          {
+            conversationId: this.conversationId,
+            maxContextTokens: this.maxContextTokens,
+            status: err?.status,
+          },
+        );
+        this.contentParts.push({
+          type: ContentTypes.ERROR,
+          [ContentTypes.ERROR]: JSON.stringify({
+            type: ErrorTypes.INPUT_LENGTH,
+            info:
+              this.maxContextTokens != null
+                ? `configured context budget: ${this.maxContextTokens} tokens`
+                : 'model context window exceeded',
+          }),
+        });
       } else {
         logger.error(
           '[api/server/controllers/agents/client.js #sendCompletion] Unhandled error type',

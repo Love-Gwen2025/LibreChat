@@ -48,6 +48,20 @@ jest.mock('~/config', () => ({
   })),
 }));
 
+describe('AgentClient - save options', () => {
+  it('does not persist a server-derived maxContextTokens value into the conversation', () => {
+    const client = new AgentClient({
+      req: { body: {}, config: {} },
+      agent: { id: 'agent-1', model_parameters: { model: 'gpt-5.5' } },
+      endpoint: EModelEndpoint.agents,
+      resendFiles: true,
+      maxContextTokens: 237500,
+    });
+
+    expect(client.getSaveOptions()).not.toHaveProperty('maxContextTokens');
+  });
+});
+
 describe('AgentClient - applyHideSequentialOutputsFilter', () => {
   const textPart = (text) => ({ type: ContentTypes.TEXT, text });
   const toolCallPart = (id) => ({ type: ContentTypes.TOOL_CALL, tool_call: { id } });

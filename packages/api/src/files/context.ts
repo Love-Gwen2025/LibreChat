@@ -36,13 +36,22 @@ export async function extractFileContext({
   }
 
   let resultText = '';
+  let remainingTokens = fileTokenLimit;
 
   for (const file of attachments) {
+    if (remainingTokens <= 0) {
+      break;
+    }
+
     const source = file.source ?? FileSources.local;
     if (source === FileSources.text && file.text) {
-      const { text: limitedText, wasTruncated } = await processTextWithTokenLimit({
+      const {
+        text: limitedText,
+        tokenCount,
+        wasTruncated,
+      } = await processTextWithTokenLimit({
         text: file.text,
-        tokenLimit: fileTokenLimit,
+        tokenLimit: remainingTokens,
         tokenCountFn,
       });
 
@@ -53,6 +62,7 @@ export async function extractFileContext({
       }
 
       resultText += `${!resultText ? 'Attached document(s):\n```md' : '\n\n---\n\n'}# "${file.filename}"\n${limitedText}\n`;
+      remainingTokens -= tokenCount;
     }
   }
 

@@ -2,6 +2,20 @@ import z from 'zod';
 import { EModelEndpoint } from 'librechat-data-provider';
 import type { EndpointTokenConfig, TokenConfig } from '~/types';
 
+/** Safety cap shared by built-in and endpoint-provided GPT context metadata. */
+export const GPT_MAX_CONTEXT_TOKENS = 250000;
+
+function capGPTContextTokens(modelName: string, maxTokens: number | undefined): number | undefined {
+  if (maxTokens == null) {
+    return undefined;
+  }
+  const normalizedModel = modelName.toLowerCase();
+  if (!normalizedModel.includes('gpt-') && !normalizedModel.includes('chat-latest')) {
+    return maxTokens;
+  }
+  return Math.min(maxTokens, GPT_MAX_CONTEXT_TOKENS);
+}
+
 /**
  * Model Token Configuration Maps
  *
@@ -48,24 +62,24 @@ const openAIModels = {
   'o3-mini': 195000, // -5000 from max
   o3: 200000,
   'o4-mini': 200000,
-  'gpt-4.1': 1047576,
-  'gpt-4.1-mini': 1047576,
-  'gpt-4.1-nano': 1047576,
-  'gpt-5': 400000,
-  'gpt-5.1': 400000,
-  'gpt-5.2': 400000,
-  'gpt-5.3': 400000,
-  'gpt-5.4': 1050000, // >272K input prices at the long-context tier (2x input, 1.5x output)
-  'gpt-5.4-pro': 1050000,
-  'gpt-5.4-mini': 400000,
-  'gpt-5.4-nano': 400000,
-  'gpt-5.5': 1050000,
-  'gpt-5.5-pro': 1050000,
-  'chat-latest': 400000,
-  'gpt-5-mini': 400000,
-  'gpt-5-nano': 400000,
-  'gpt-5-pro': 400000,
-  'gpt-5.2-pro': 400000,
+  'gpt-4.1': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-4.1-mini': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-4.1-nano': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.1': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.2': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.3': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.4': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.4-pro': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.4-mini': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.4-nano': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.5': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.5-pro': GPT_MAX_CONTEXT_TOKENS,
+  'chat-latest': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5-mini': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5-nano': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5-pro': GPT_MAX_CONTEXT_TOKENS,
+  'gpt-5.2-pro': GPT_MAX_CONTEXT_TOKENS,
 };
 
 const mistralModels = {
@@ -527,10 +541,13 @@ export function getModelMaxTokens(
   if (endpointTokenConfig != null) {
     const overrideValue = getModelTokenValue(modelName, endpointTokenConfig);
     if (overrideValue != null) {
-      return overrideValue;
+      return capGPTContextTokens(modelName, overrideValue);
     }
   }
-  return getModelTokenValue(modelName, maxTokensMap[endpoint as keyof typeof maxTokensMap]);
+  return capGPTContextTokens(
+    modelName,
+    getModelTokenValue(modelName, maxTokensMap[endpoint as keyof typeof maxTokensMap]),
+  );
 }
 
 /**

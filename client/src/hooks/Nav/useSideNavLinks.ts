@@ -3,7 +3,6 @@ import { MCPIcon, AttachmentIcon, OpenAIMinimalIcon } from '@librechat/client';
 import {
   Bot,
   Brain,
-  Bookmark,
   NotebookPen,
   ScrollText,
   ArrowRightToLine,
@@ -27,7 +26,6 @@ import {
 } from '~/hooks';
 import MCPBuilderPanel from '~/components/SidePanel/MCPBuilder/MCPBuilderPanel';
 import AgentPanelSwitch from '~/components/SidePanel/Agents/AgentPanelSwitch';
-import BookmarkPanel from '~/components/SidePanel/Bookmarks/BookmarkPanel';
 import PanelSwitch from '~/components/SidePanel/Builder/PanelSwitch';
 import Parameters from '~/components/SidePanel/Parameters/Panel';
 import { MemoryPanel } from '~/components/SidePanel/Memories';
@@ -58,10 +56,6 @@ export default function useSideNavLinks({
   });
   const hasAccessToSkills = useHasAccess({
     permissionType: PermissionTypes.SKILLS,
-    permission: Permissions.USE,
-  });
-  const hasAccessToBookmarks = useHasAccess({
-    permissionType: PermissionTypes.BOOKMARKS,
     permission: Permissions.USE,
   });
   const hasAccessToMemories = useHasAccess({
@@ -160,16 +154,6 @@ export default function useSideNavLinks({
       });
     }
 
-    if (hasAccessToBookmarks) {
-      links.push({
-        title: 'com_sidepanel_conversation_tags',
-        label: '',
-        icon: Bookmark,
-        id: 'bookmarks',
-        Component: BookmarkPanel,
-      });
-    }
-
     links.push({
       title: 'com_sidepanel_attach_files',
       label: '',
@@ -230,7 +214,6 @@ export default function useSideNavLinks({
     hasAccessToReadMemories,
     interfaceConfig.parameters,
     endpointType,
-    hasAccessToBookmarks,
     availableMCPServers,
     hasAccessToUseMCPSettings,
     hasAccessToCreateMCP,

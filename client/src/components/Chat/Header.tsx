@@ -6,9 +6,7 @@ import ModelSelector from './Menus/Endpoints/ModelSelector';
 import { useGetStartupConfig } from '~/data-provider';
 import ExportAndShareMenu from './ExportAndShareMenu';
 import { OpenSidebar, PresetsMenu } from './Menus';
-import BookmarkMenu from './Menus/BookmarkMenu';
 import { TemporaryChat } from './TemporaryChat';
-import AddMultiConvo from './AddMultiConvo';
 import { useHasAccess } from '~/hooks';
 import { cn } from '~/utils';
 import store from '~/store';
@@ -24,16 +22,6 @@ function Header() {
     [startupConfig],
   );
 
-  const hasAccessToBookmarks = useHasAccess({
-    permissionType: PermissionTypes.BOOKMARKS,
-    permission: Permissions.USE,
-  });
-
-  const hasAccessToMultiConvo = useHasAccess({
-    permissionType: PermissionTypes.MULTI_CONVO,
-    permission: Permissions.USE,
-  });
-
   const hasAccessToTemporaryChat = useHasAccess({
     permissionType: PermissionTypes.TEMPORARY_CHAT,
     permission: Permissions.USE,
@@ -45,7 +33,7 @@ function Header() {
     <div className="via-presentation/70 md:from-presentation/80 md:via-presentation/50 2xl:from-presentation/0 absolute top-0 z-10 flex h-[52px] w-full items-center justify-between bg-gradient-to-b from-presentation to-transparent p-2 font-semibold text-text-primary 2xl:via-transparent">
       <div className="hide-scrollbar flex w-full items-center justify-between gap-2 overflow-x-auto">
         <div className="mx-1 flex items-center">
-          {isSmallScreen ? <OpenSidebar /> : null}
+          {!navVisible ? <OpenSidebar /> : null}
           {!(navVisible && isSmallScreen) && (
             <div
               className={cn(
@@ -55,8 +43,6 @@ function Header() {
             >
               <ModelSelector startupConfig={startupConfig} />
               {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />}
-              {hasAccessToBookmarks === true && <BookmarkMenu />}
-              {hasAccessToMultiConvo === true && <AddMultiConvo />}
               {isSmallScreen && (
                 <>
                   <ExportAndShareMenu

@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/react';
 import type { MutableSnapshot } from 'recoil';
 
 let mockIsSmallScreen = false;
+let mockHasAccess = false;
 
 jest.mock('~/store', () => {
   const { atom } = jest.requireActual('recoil');
@@ -22,7 +23,7 @@ jest.mock('@librechat/client', () => ({
 
 jest.mock('librechat-data-provider', () => ({
   getConfigDefaults: () => ({ interface: {} }),
-  PermissionTypes: { BOOKMARKS: 'bookmarks', MULTI_CONVO: 'multiConvo', TEMPORARY_CHAT: 'temp' },
+  PermissionTypes: { TEMPORARY_CHAT: 'temp' },
   Permissions: { USE: 'use' },
 }));
 
@@ -31,7 +32,7 @@ jest.mock('~/data-provider', () => ({
 }));
 
 jest.mock('~/hooks', () => ({
-  useHasAccess: () => false,
+  useHasAccess: () => mockHasAccess,
 }));
 
 jest.mock('~/utils', () => ({
@@ -49,19 +50,19 @@ jest.mock('../ExportAndShareMenu', () => ({
 }));
 
 jest.mock('../Menus', () => ({
-  OpenSidebar: () => <button data-testid="open-sidebar-button">open</button>,
+  OpenSidebar: () => <button data-testid="open-sidebar-button" />,
   PresetsMenu: () => null,
 }));
 
 jest.mock('../Menus/BookmarkMenu', () => ({
   __esModule: true,
-  default: () => null,
+  default: () => <div data-testid="bookmark-menu" />,
 }));
 
 jest.mock('../TemporaryChat', () => ({ TemporaryChat: () => null }));
 jest.mock('../AddMultiConvo', () => ({
   __esModule: true,
-  default: () => null,
+  default: () => <button data-testid="add-multi-convo-button" />,
 }));
 
 import Header from '../Header';
@@ -78,6 +79,11 @@ function renderHeader(expanded: boolean) {
 }
 
 describe('Header sidebar opener', () => {
+  beforeEach(() => {
+    mockIsSmallScreen = false;
+    mockHasAccess = false;
+  });
+
   it('shows the mobile opener when the sidebar is closed', () => {
     mockIsSmallScreen = true;
 
@@ -86,11 +92,26 @@ describe('Header sidebar opener', () => {
     expect(screen.getByTestId('open-sidebar-button')).toBeInTheDocument();
   });
 
-  it('leaves the desktop opener to the global sidebar shell', () => {
+  it('shows the desktop opener when the sidebar is closed', () => {
     mockIsSmallScreen = false;
 
     renderHeader(false);
 
+    expect(screen.getByTestId('open-sidebar-button')).toBeInTheDocument();
+  });
+
+  it('hides the opener while the sidebar is expanded', () => {
+    renderHeader(true);
+
     expect(screen.queryByTestId('open-sidebar-button')).not.toBeInTheDocument();
+  });
+
+  it('does not render bookmark or multi-conversation controls', () => {
+    mockHasAccess = true;
+
+    renderHeader(true);
+
+    expect(screen.queryByTestId('bookmark-menu')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('add-multi-convo-button')).not.toBeInTheDocument();
   });
 });

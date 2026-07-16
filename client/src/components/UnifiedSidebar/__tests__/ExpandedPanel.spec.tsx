@@ -134,14 +134,10 @@ describe('ExpandedPanel', () => {
     expect(onCollapse).toHaveBeenCalledTimes(1);
   });
 
-  it('centers the LikeChat wordmark in the sidebar header', async () => {
+  it('does not render a brand logo in the sidebar header', async () => {
     await renderReady();
 
-    expect(screen.getByTestId('sidebar-brand-logo')).toHaveAttribute(
-      'src',
-      '/assets/likechat-wordmark.png',
-    );
-    expect(screen.getByTestId('sidebar-brand-logo')).toHaveAttribute('alt', 'com_ui_likechat_logo');
+    expect(screen.queryByTestId('sidebar-brand-logo')).not.toBeInTheDocument();
   });
 
   it('places the expanded account menu after the conversation area', async () => {

@@ -188,14 +188,6 @@ export const shortcutDefinitions = {
     ariaMac: 'Meta+Enter',
     ariaOther: 'Control+Enter',
   },
-  bookmarkConversation: {
-    labelKey: 'com_shortcut_bookmark_conversation',
-    groupKey: 'com_shortcut_group_navigation',
-    displayMac: '⌘ ⇧ B',
-    displayOther: 'Ctrl+Shift+B',
-    ariaMac: 'Meta+Shift+B',
-    ariaOther: 'Control+Shift+B',
-  },
   continueResponse: {
     labelKey: 'com_shortcut_continue_response',
     groupKey: 'com_shortcut_group_chat',
@@ -254,14 +246,6 @@ export const shortcutDefinitions = {
   },
   openFiles: {
     labelKey: 'com_shortcut_open_files',
-    groupKey: 'com_shortcut_group_panels',
-    displayMac: '',
-    displayOther: '',
-    ariaMac: '',
-    ariaOther: '',
-  },
-  openBookmarks: {
-    labelKey: 'com_shortcut_open_bookmarks',
     groupKey: 'com_shortcut_group_panels',
     displayMac: '',
     displayOther: '',
@@ -676,8 +660,6 @@ export function useShortcutActions(): ShortcutAction[] {
     [],
   );
 
-  const handleBookmarkConversation = useCallback(() => clickElement('#bookmark-menu-button'), []);
-
   const handleOpenPanel = useCallback(
     (panelId: string) => {
       const changedPanel = activePanel !== panelId;
@@ -701,7 +683,6 @@ export function useShortcutActions(): ShortcutAction[] {
   const handleOpenMemories = useCallback(() => handleOpenPanel('memories'), [handleOpenPanel]);
   const handleOpenParameters = useCallback(() => handleOpenPanel('parameters'), [handleOpenPanel]);
   const handleOpenFiles = useCallback(() => handleOpenPanel('files'), [handleOpenPanel]);
-  const handleOpenBookmarks = useCallback(() => handleOpenPanel('bookmarks'), [handleOpenPanel]);
   const handleOpenMCP = useCallback(() => handleOpenPanel('mcp-builder'), [handleOpenPanel]);
 
   const handlers = useMemo<Record<ShortcutActionId, () => boolean | void>>(
@@ -725,7 +706,6 @@ export function useShortcutActions(): ShortcutAction[] {
       archiveConversation: handleArchiveConversation,
       deleteConversation: handleDeleteConversation,
       submitMessage: handleSubmitMessage,
-      bookmarkConversation: handleBookmarkConversation,
       continueResponse: handleContinueResponse,
       readAloudLastResponse: handleReadAloudLastResponse,
       openAssistants: handleOpenAssistants,
@@ -734,7 +714,6 @@ export function useShortcutActions(): ShortcutAction[] {
       openMemories: handleOpenMemories,
       openParameters: handleOpenParameters,
       openFiles: handleOpenFiles,
-      openBookmarks: handleOpenBookmarks,
       openMCP: handleOpenMCP,
     }),
     [
@@ -757,7 +736,6 @@ export function useShortcutActions(): ShortcutAction[] {
       handleArchiveConversation,
       handleDeleteConversation,
       handleSubmitMessage,
-      handleBookmarkConversation,
       handleContinueResponse,
       handleReadAloudLastResponse,
       handleOpenAssistants,
@@ -766,7 +744,6 @@ export function useShortcutActions(): ShortcutAction[] {
       handleOpenMemories,
       handleOpenParameters,
       handleOpenFiles,
-      handleOpenBookmarks,
       handleOpenMCP,
     ],
   );

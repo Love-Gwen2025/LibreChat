@@ -40,7 +40,7 @@ export function buildSharedLinkStartupPayload(
   env: SharedLinkStartupEnv = process.env,
 ): TSharedLinkStartupConfig {
   const payload: TSharedLinkStartupConfig = {
-    appTitle: env.APP_TITLE || 'ShChat',
+    appTitle: env.APP_TITLE || 'LikeChat',
   };
 
   if (typeof env.ANALYTICS_GTM_ID === 'string') {

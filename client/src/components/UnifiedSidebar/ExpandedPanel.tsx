@@ -14,6 +14,7 @@ import { clearMessagesCache } from '~/utils';
 import store from '~/store';
 
 const AccountSettings = lazy(() => import('~/components/Nav/AccountSettings'));
+const APP_NAME = 'LikeChat';
 
 const NewChatButton = memo(function NewChatButton({
   setActive,
@@ -74,7 +75,7 @@ function ExpandedPanel({ links, onCollapse }: { links: NavLink[]; onCollapse: ()
       className="flex h-full w-full min-w-0 flex-col bg-surface-primary-alt"
       data-testid="conversation-sidebar"
     >
-      <div className="flex h-[52px] flex-shrink-0 items-center justify-between border-b border-border-light px-3">
+      <div className="grid h-[52px] flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_36px] items-center border-b border-border-light px-3">
         <TooltipAnchor
           side="right"
           description={toggleSidebarHint}
@@ -94,6 +95,12 @@ function ExpandedPanel({ links, onCollapse }: { links: NavLink[]; onCollapse: ()
             </Button>
           }
         />
+        <span
+          className="truncate px-3 text-center text-base font-semibold text-text-primary"
+          data-testid="sidebar-brand-name"
+        >
+          {APP_NAME}
+        </span>
         <NewChatButton setActive={setActive} />
       </div>
       <nav id="chat-history-nav" className="min-h-0 flex-1 overflow-hidden">

@@ -44,7 +44,7 @@ export default function StartupLayout({ isAuthenticated }: { isAuthenticated?: b
   }, [isAuthenticated, navigate, data]);
 
   useEffect(() => {
-    document.title = startupConfig?.appTitle || 'ShChat';
+    document.title = startupConfig?.appTitle || 'LikeChat';
   }, [startupConfig?.appTitle]);
 
   useEffect(() => {

@@ -134,10 +134,11 @@ describe('ExpandedPanel', () => {
     expect(onCollapse).toHaveBeenCalledTimes(1);
   });
 
-  it('does not render a brand logo in the sidebar header', async () => {
+  it('renders the LikeChat name without a brand logo in the sidebar header', async () => {
     await renderReady();
 
     expect(screen.queryByTestId('sidebar-brand-logo')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sidebar-brand-name')).toHaveTextContent('LikeChat');
   });
 
   it('places the expanded account menu after the conversation area', async () => {

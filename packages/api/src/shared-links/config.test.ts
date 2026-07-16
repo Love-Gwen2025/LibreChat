@@ -80,6 +80,6 @@ describe('buildSharedLinkStartupPayload', () => {
       {},
     );
 
-    expect(payload).toEqual({ appTitle: 'ShChat' });
+    expect(payload).toEqual({ appTitle: 'LikeChat' });
   });
 });

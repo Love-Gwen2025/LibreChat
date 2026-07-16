@@ -246,12 +246,24 @@ class AgentClient extends BaseClient {
   getSaveOptions() {
     let runOptions = {};
     try {
-      runOptions = payloadParser(this.options) ?? {};
+      runOptions = { ...(payloadParser(this.options) ?? {}) };
     } catch (error) {
       logger.error(
         '[api/server/controllers/agents/client.js #getSaveOptions] Error parsing options',
         error,
       );
+    }
+
+    const requestedMaxContextTokens = Number(runOptions.maxContextTokens);
+    const effectiveMaxContextTokens = Number(this.maxContextTokens);
+    if (
+      !Number.isFinite(requestedMaxContextTokens) ||
+      requestedMaxContextTokens <= 0 ||
+      (Number.isFinite(effectiveMaxContextTokens) &&
+        effectiveMaxContextTokens > 0 &&
+        requestedMaxContextTokens > effectiveMaxContextTokens)
+    ) {
+      delete runOptions.maxContextTokens;
     }
 
     return removeNullishValues(

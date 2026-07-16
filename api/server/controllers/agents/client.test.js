@@ -60,6 +60,42 @@ describe('AgentClient - save options', () => {
 
     expect(client.getSaveOptions()).not.toHaveProperty('maxContextTokens');
   });
+
+  it('does not persist a stale request maxContextTokens value above the effective limit', () => {
+    const client = new AgentClient({
+      req: {
+        body: {
+          endpointOption: {
+            model_parameters: { model: 'gpt-5.5', maxContextTokens: 997500 },
+          },
+        },
+        config: {},
+      },
+      agent: { id: Constants.EPHEMERAL_AGENT_ID, model_parameters: { model: 'gpt-5.5' } },
+      endpoint: EModelEndpoint.openAI,
+      maxContextTokens: 237500,
+    });
+
+    expect(client.getSaveOptions()).not.toHaveProperty('maxContextTokens');
+  });
+
+  it('preserves an explicit request maxContextTokens value below the effective limit', () => {
+    const client = new AgentClient({
+      req: {
+        body: {
+          endpointOption: {
+            model_parameters: { model: 'gpt-5.5', maxContextTokens: 100000 },
+          },
+        },
+        config: {},
+      },
+      agent: { id: Constants.EPHEMERAL_AGENT_ID, model_parameters: { model: 'gpt-5.5' } },
+      endpoint: EModelEndpoint.openAI,
+      maxContextTokens: 237500,
+    });
+
+    expect(client.getSaveOptions()).toHaveProperty('maxContextTokens', 100000);
+  });
 });
 
 describe('AgentClient - applyHideSequentialOutputsFilter', () => {

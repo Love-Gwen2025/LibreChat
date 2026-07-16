@@ -1,15 +1,15 @@
 # =============================================================================
-# ShChat 配置 (librechat.yaml)
+# LikeChat 配置 (librechat.yaml)
 # =============================================================================
 version: 1.3.13
 
 # 界面定制
 interface:
-  customWelcome: "欢迎使用 ShChat"
+  customWelcome: "欢迎使用 LikeChat"
   modelSelect: false
   marketplace:
     use: false
-  # 不显示自定义页脚，用源码里的 ShChat 页脚
+  # 不显示自定义页脚
 
 # 注册控制: 关闭自由注册，只允许邀请码注册
 registration:

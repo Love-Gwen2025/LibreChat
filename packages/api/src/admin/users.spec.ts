@@ -728,6 +728,104 @@ describe('createAdminUsersHandlers', () => {
     });
   });
 
+  describe('updateUserName', () => {
+    it('trims and updates the display name, returning the safe user shape', async () => {
+      const updated = mockUser({ name: 'Updated Name' });
+      const deps = createDeps({ updateUser: jest.fn().mockResolvedValue(updated) });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { name: '  Updated Name  ' },
+      });
+
+      await handlers.updateUserName(req, res);
+
+      expect(deps.updateUser).toHaveBeenCalledWith(validUserId, { name: 'Updated Name' });
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({
+        user: expect.objectContaining({ name: 'Updated Name', email: updated.email }),
+      });
+      expect(json.mock.calls[0][0].user).not.toHaveProperty('password');
+    });
+
+    it('rejects an invalid user ID', async () => {
+      const deps = createDeps();
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: 'not-an-object-id' },
+        body: { name: 'Updated Name' },
+      });
+
+      await handlers.updateUserName(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error: 'Invalid user ID format' });
+      expect(deps.updateUser).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, null, 123, true])('rejects non-string name %p', async (name) => {
+      const deps = createDeps();
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { name },
+      });
+
+      await handlers.updateUserName(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error: 'name must be a string' });
+      expect(deps.updateUser).not.toHaveBeenCalled();
+    });
+
+    it.each(['', '  ', 'ab', 'a'.repeat(81)])('rejects invalid name length', async (name) => {
+      const deps = createDeps();
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { name },
+      });
+
+      await handlers.updateUserName(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({
+        error: 'name must be between 3 and 80 characters',
+      });
+      expect(deps.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the user does not exist', async () => {
+      const deps = createDeps({ updateUser: jest.fn().mockResolvedValue(null) });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { name: 'Updated Name' },
+      });
+
+      await handlers.updateUserName(req, res);
+
+      expect(status).toHaveBeenCalledWith(404);
+      expect(json).toHaveBeenCalledWith({ error: 'User not found' });
+    });
+
+    it('returns 500 when the update fails', async () => {
+      const deps = createDeps({
+        updateUser: jest.fn().mockRejectedValue(new Error('db down')),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { name: 'Updated Name' },
+      });
+
+      await handlers.updateUserName(req, res);
+
+      expect(status).toHaveBeenCalledWith(500);
+      expect(json).toHaveBeenCalledWith({ error: 'Failed to update user name' });
+    });
+  });
+
   describe('updateUserRole', () => {
     it('promotes a regular user to admin', async () => {
       const deps = createDeps({

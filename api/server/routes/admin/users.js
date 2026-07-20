@@ -36,6 +36,7 @@ router.use(requireJwtAuth, requireAdminAccess);
 router.post('/', requireManageUsers, handlers.createUser);
 router.get('/', requireReadUsers, handlers.listUsers);
 router.get('/search', requireReadUsers, handlers.searchUsers);
+router.patch('/:id/name', requireManageUsers, handlers.updateUserName);
 router.patch('/:id/role', requireManageUsers, handlers.updateUserRole);
 router.patch('/:id/status', requireManageUsers, handlers.updateUserStatus);
 router.get('/:id/models', requireManageUserModels, configMiddleware, handlers.getUserAgentModels);

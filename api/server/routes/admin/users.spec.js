@@ -17,6 +17,7 @@ const mockHandlers = {
   createUser: jest.fn((_req, res) => res.status(201).json({})),
   listUsers: jest.fn((_req, res) => res.status(200).json({ users: [] })),
   searchUsers: jest.fn((_req, res) => res.status(200).json({ users: [] })),
+  updateUserName: jest.fn((_req, res) => res.status(200).json({})),
   updateUserRole: jest.fn((_req, res) => res.status(200).json({})),
   updateUserStatus: jest.fn((_req, res) => res.status(200).json({})),
   getUserAgentModels: jest.fn((req, res) => res.status(200).json({ config: req.config })),
@@ -73,5 +74,20 @@ describe('admin user model routes', () => {
 
     expect(mockConfigMiddleware).toHaveBeenCalledTimes(1);
     expect(response.body).toEqual({ config: appConfig });
+  });
+});
+
+describe('admin user name route', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('routes PATCH /:id/name to the name update handler', async () => {
+    await request(createApp())
+      .patch(`/api/admin/users/${userId}/name`)
+      .send({ name: 'Updated Name' })
+      .expect(200);
+
+    expect(mockHandlers.updateUserName).toHaveBeenCalledTimes(1);
   });
 });

@@ -23,6 +23,8 @@ import {
 } from '~/agents/imageAgent';
 
 const MAX_SEARCH_LENGTH = 200;
+const MIN_USER_NAME_LENGTH = 3;
+const MAX_USER_NAME_LENGTH = 80;
 
 const USER_LIST_FIELDS =
   '_id name username email avatar role provider isDisabled allowedAgentModels createdAt updatedAt';
@@ -106,6 +108,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
   listUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   searchUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   deleteUser: (req: ServerRequest, res: Response) => Promise<Response>;
+  updateUserName: (req: ServerRequest, res: Response) => Promise<Response>;
   updateUserRole: (req: ServerRequest, res: Response) => Promise<Response>;
   updateUserStatus: (req: ServerRequest, res: Response) => Promise<Response>;
   getUserAgentModels: (req: ServerRequest, res: Response) => Promise<Response>;
@@ -315,6 +318,37 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     } catch (error) {
       logger.error('[adminUsers] deleteUser error:', error);
       return res.status(500).json({ error: 'Failed to delete user' });
+    }
+  }
+
+  async function updateUserNameHandler(req: ServerRequest, res: Response) {
+    try {
+      const { id } = req.params as { id: string };
+      const rawName = (req.body as { name?: unknown }).name;
+
+      if (!isValidObjectIdString(id)) {
+        return res.status(400).json({ error: 'Invalid user ID format' });
+      }
+      if (typeof rawName !== 'string') {
+        return res.status(400).json({ error: 'name must be a string' });
+      }
+
+      const name = rawName.trim();
+      if (name.length < MIN_USER_NAME_LENGTH || name.length > MAX_USER_NAME_LENGTH) {
+        return res.status(400).json({
+          error: `name must be between ${MIN_USER_NAME_LENGTH} and ${MAX_USER_NAME_LENGTH} characters`,
+        });
+      }
+
+      const updated = await updateUser(id, { name });
+      if (!updated) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      return res.status(200).json({ user: mapUserListItem(updated) });
+    } catch (error) {
+      logger.error('[adminUsers] updateUserName error:', error);
+      return res.status(500).json({ error: 'Failed to update user name' });
     }
   }
 
@@ -549,6 +583,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     listUsers: listUsersHandler,
     searchUsers: searchUsersHandler,
     deleteUser: deleteUserHandler,
+    updateUserName: updateUserNameHandler,
     updateUserRole: updateUserRoleHandler,
     updateUserStatus: updateUserStatusHandler,
     getUserAgentModels: getUserAgentModelsHandler,

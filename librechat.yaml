@@ -34,12 +34,12 @@ endpoints:
     # 流式输出
     streamRate: 0
 
-# 模型预设（全局模型选择器隐藏，默认进入生图助手）
+# 模型预设（全局模型选择器隐藏，默认进入 like助手）
 modelSpecs:
   prioritize: true
   list:
     - name: "image-generation"
-      label: "生图工作区"
+      label: "like助手"
       description: "描述你想要的画面"
       default: true
       showInMenu: true

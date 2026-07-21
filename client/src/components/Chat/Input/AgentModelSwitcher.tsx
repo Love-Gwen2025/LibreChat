@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo } from 'react';
 import { SelectDropDown } from '@librechat/client';
-import { Constants, EModelEndpoint, isAgentsEndpoint } from 'librechat-data-provider';
+import { EModelEndpoint, isAgentsEndpoint } from 'librechat-data-provider';
 import { useLocalize } from '~/hooks';
 import { useAgentsMapContext, useChatContext } from '~/Providers';
 
@@ -37,8 +37,9 @@ function AgentModelSwitcher() {
         return;
       }
 
+      // Let useNewConvo assign the new ID. Passing "new" for a parameterized
+      // endpoint strips agent_id from the template before the conversation is set.
       const template = {
-        conversationId: Constants.NEW_CONVO as string,
         endpoint: EModelEndpoint.agents,
         agent_id: conversation.agent_id,
         agent_model: model,

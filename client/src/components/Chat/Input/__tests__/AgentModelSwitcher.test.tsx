@@ -77,7 +77,6 @@ describe('AgentModelSwitcher', () => {
 
     expect(mockNewConversation).toHaveBeenCalledWith({
       template: expect.objectContaining({
-        conversationId: 'new',
         endpoint: 'agents',
         agent_id: 'agent_image',
         agent_model: 'gpt-5.4',
@@ -86,6 +85,9 @@ describe('AgentModelSwitcher', () => {
       preset: expect.objectContaining({ agent_model: 'gpt-5.4' }),
       buildDefault: false,
     });
+    const [{ template, preset }] = mockNewConversation.mock.calls[0];
+    expect(template).not.toHaveProperty('conversationId');
+    expect(preset).not.toHaveProperty('conversationId');
   });
 
   it('stays hidden when the agent has no model choices', () => {

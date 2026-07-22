@@ -4,6 +4,7 @@ import {
   getBuiltinImageAgentModels,
   getEffectiveAgentModels,
   normalizeAgentModels,
+  hasImageToolCall,
 } from './imageAgent';
 
 describe('image Agent helpers', () => {
@@ -56,5 +57,36 @@ describe('image Agent helpers', () => {
       'gpt-5.5',
       ...BUILTIN_IMAGE_AGENT_MODEL_ADDITIONS,
     ]);
+  });
+});
+
+describe('hasImageToolCall', () => {
+  it('detects generation and edit tool calls', () => {
+    expect(hasImageToolCall([{ type: 'tool_call', tool_call: { name: 'image_gen_oai' } }])).toBe(
+      true,
+    );
+    expect(
+      hasImageToolCall([
+        { type: 'text' },
+        { type: 'tool_call', tool_call: { name: 'image_edit_oai' } },
+      ]),
+    ).toBe(true);
+  });
+
+  it('returns false for text-only replies', () => {
+    expect(hasImageToolCall([{ type: 'text' }])).toBe(false);
+  });
+
+  it('returns false for non-image tool calls', () => {
+    expect(hasImageToolCall([{ type: 'tool_call', tool_call: { name: 'web_search' } }])).toBe(
+      false,
+    );
+  });
+
+  it('tolerates missing or malformed content', () => {
+    expect(hasImageToolCall(undefined)).toBe(false);
+    expect(hasImageToolCall(null)).toBe(false);
+    expect(hasImageToolCall([])).toBe(false);
+    expect(hasImageToolCall([null as never, { type: 'tool_call' }])).toBe(false);
   });
 });

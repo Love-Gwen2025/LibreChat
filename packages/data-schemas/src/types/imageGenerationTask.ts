@@ -4,6 +4,7 @@ export const IMAGE_GENERATION_TASK_STATUSES = [
   'queued',
   'running',
   'completed',
+  'text_only',
   'failed',
   'cancelled',
 ] as const;

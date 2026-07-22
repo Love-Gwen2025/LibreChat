@@ -9,6 +9,7 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 jest.mock('@librechat/api', () => ({
   getBuiltinImageAgentId: (...args) => mockGetBuiltinImageAgentId(...args),
+  hasImageToolCall: jest.requireActual('@librechat/api').hasImageToolCall,
 }));
 jest.mock('~/models', () => ({
   createImageGenerationTask: (...args) => mockCreateImageGenerationTask(...args),
@@ -92,6 +93,7 @@ describe('ImageGenerationTasks', () => {
 
   it('marks a task completed with its generated image IDs', async () => {
     await completeImageGenerationTask('response-1', {
+      messageId: 'final-response-1',
       attachments: [
         { file_id: 'image-1', type: 'image/png' },
         { file_id: 'image-2', type: 'image/webp' },
@@ -104,13 +106,20 @@ describe('ImageGenerationTasks', () => {
         status: 'completed',
         imageCount: 2,
         outputFileIds: ['image-1', 'image-2'],
+        responseMessageId: 'final-response-1',
         completedAt: expect.any(Date),
       }),
     );
   });
 
-  it('marks a nominally completed task failed when no image was produced', async () => {
-    await completeImageGenerationTask('response-1', { attachments: [] });
+  it('marks a task failed when an image tool ran but produced no image', async () => {
+    await completeImageGenerationTask('response-1', {
+      attachments: [],
+      content: [
+        { type: 'text', text: 'Generating…' },
+        { type: 'tool_call', tool_call: { name: 'image_gen_oai' } },
+      ],
+    });
 
     expect(mockUpdateImageGenerationTask).toHaveBeenCalledWith(
       'response-1',
@@ -121,6 +130,27 @@ describe('ImageGenerationTasks', () => {
         error: 'No image was produced',
       }),
     );
+  });
+
+  it('marks a task text_only when the agent replied without invoking an image tool', async () => {
+    await completeImageGenerationTask('response-1', {
+      messageId: 'final-response-1',
+      attachments: [],
+      content: [{ type: 'text', text: '这是翻译和大纲分析……' }],
+    });
+
+    expect(mockUpdateImageGenerationTask).toHaveBeenCalledWith(
+      'response-1',
+      expect.objectContaining({
+        status: 'text_only',
+        imageCount: 0,
+        outputFileIds: [],
+        responseMessageId: 'final-response-1',
+        completedAt: expect.any(Date),
+      }),
+    );
+    const update = mockUpdateImageGenerationTask.mock.calls[0][1];
+    expect(update.error).toBeUndefined();
   });
 
   it('records failed and cancelled terminal states', async () => {

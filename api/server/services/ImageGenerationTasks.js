@@ -1,5 +1,5 @@
 const { logger, redactMessage } = require('@librechat/data-schemas');
-const { getBuiltinImageAgentId } = require('@librechat/api');
+const { getBuiltinImageAgentId, hasImageToolCall } = require('@librechat/api');
 const db = require('~/models');
 
 function getRequestAgentId(req, endpointOption) {
@@ -82,22 +82,31 @@ async function updateImageGenerationTask(taskId, update) {
 
 async function completeImageGenerationTask(taskId, response) {
   const outputFileIds = getImageOutputs(response);
-  if (outputFileIds.length === 0) {
-    await updateImageGenerationTask(taskId, {
-      status: 'failed',
-      imageCount: 0,
-      outputFileIds: [],
-      completedAt: new Date(),
-      error: 'No image was produced',
-    });
-    return;
-  }
-  await updateImageGenerationTask(taskId, {
-    status: 'completed',
+  const update = {
     imageCount: outputFileIds.length,
     outputFileIds,
     completedAt: new Date(),
-    error: undefined,
+  };
+  /* Replace the preliminary id (`${userMessageId}_`) recorded at task
+   * creation so the task links to the response message that was saved. */
+  if (typeof response?.messageId === 'string' && response.messageId.length > 0) {
+    update.responseMessageId = response.messageId;
+  }
+
+  if (outputFileIds.length > 0) {
+    await updateImageGenerationTask(taskId, { ...update, status: 'completed', error: undefined });
+    return;
+  }
+
+  if (!hasImageToolCall(response?.content)) {
+    await updateImageGenerationTask(taskId, { ...update, status: 'text_only', error: undefined });
+    return;
+  }
+
+  await updateImageGenerationTask(taskId, {
+    ...update,
+    status: 'failed',
+    error: 'No image was produced',
   });
 }
 

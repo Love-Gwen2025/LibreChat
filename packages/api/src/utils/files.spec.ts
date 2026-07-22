@@ -61,22 +61,34 @@ describe('sanitizeFilename', () => {
   test('truncates long filenames', () => {
     const longName = 'a'.repeat(300) + '.txt';
     const result = sanitizeFilename(longName);
-    expect(result.length).toBe(255);
+    expect(result.length).toBe(217);
     expect(result).toMatch(/^a+-abc123\.txt$/);
   });
 
   test('truncates Unicode filenames by UTF-8 bytes, preserving the extension', () => {
     const longName = '界'.repeat(100) + '.txt';
     const result = sanitizeFilename(longName);
-    expect(utf8ByteLength(result)).toBeLessThanOrEqual(255);
+    expect(utf8ByteLength(result)).toBeLessThanOrEqual(217);
     expect(result.endsWith('-abc123.txt')).toBe(true);
   });
 
   test('handles filenames with no extension', () => {
     const longName = 'a'.repeat(300);
     const result = sanitizeFilename(longName);
-    expect(result.length).toBe(255);
+    expect(result.length).toBe(217);
     expect(result).toMatch(/^a+-abc123$/);
+  });
+
+  test('caps re-upload chains so the `${file_id}__` storage key fits NAME_MAX', () => {
+    /* Regression: browsers name dragged-back / re-downloaded images by
+     * their stored basename (`uuid__uuid__...__original`), so each edit
+     * round grows the name by 38 bytes. Storage strategies prepend one
+     * more `${file_id}__`, so the sanitized form must stay ≤ 255 - 38. */
+    const uuid = '0b176d28-8210-4cbc-a808-468c0fb8e9ae';
+    const chained = `${uuid}__${uuid}__${uuid}__` + '将这张图片的环境改为夜晚'.repeat(5) + '.png';
+    const result = sanitizeFilename(chained);
+    expect(utf8ByteLength(`${uuid}__${result}`)).toBeLessThanOrEqual(255);
+    expect(result.endsWith('.png')).toBe(true);
   });
 
   test('handles empty input', () => {
@@ -578,7 +590,7 @@ describe('sanitizeFilename with real crypto', () => {
     const longName = 'b'.repeat(300) + '.pdf';
     const result = realSanitizeFilename(longName);
 
-    expect(result.length).toBe(255);
+    expect(result.length).toBe(217);
     expect(result).toMatch(/^b+-[a-f0-9]{6}\.pdf$/);
     expect(result.endsWith('.pdf')).toBe(true);
   });
@@ -588,7 +600,7 @@ describe('sanitizeFilename with real crypto', () => {
     const longName = 'c'.repeat(300);
     const result = realSanitizeFilename(longName);
 
-    expect(result.length).toBe(255);
+    expect(result.length).toBe(217);
     expect(result).toMatch(/^c+-[a-f0-9]{6}$/);
     expect(result).not.toContain('.');
   });
@@ -599,8 +611,8 @@ describe('sanitizeFilename with real crypto', () => {
     const result1 = realSanitizeFilename(longName);
     const result2 = realSanitizeFilename(longName);
 
-    expect(result1.length).toBe(255);
-    expect(result2.length).toBe(255);
+    expect(result1.length).toBe(217);
+    expect(result2.length).toBe(217);
     expect(result1).not.toBe(result2); // Should be different due to random suffix
     expect(result1.endsWith('.doc')).toBe(true);
     expect(result2.endsWith('.doc')).toBe(true);

@@ -13,6 +13,16 @@ const ASCII_FILENAME_SAFE_PATTERN = /^[a-zA-Z0-9._-]$/;
 const UNSAFE_UNICODE_FILENAME_PATTERN = /[^\p{L}\p{M}\p{N}\p{Emoji}\u200d._-]/gu;
 const FILENAME_SEGMENT_MAX_BYTES = 255;
 
+/** Byte budget for the `${file_id}__` prefix every storage strategy prepends
+ * to the sanitized basename (`createSanitizedUploadWrapper` composes
+ * `${file_id}__${originalname}`): UUID v4 (36 bytes) + `__` (2 bytes).
+ * `sanitizeFilename` must leave this headroom inside NAME_MAX \u2014 browsers
+ * name dragged-back or re-downloaded images by their stored basename, which
+ * already carries prior `uuid__` prefixes, so each re-upload grows the name
+ * and an uncapped chain fails with `ENAMETOOLONG` at write time. */
+const STORAGE_KEY_PREFIX_BYTES = 38;
+const UPLOAD_BASENAME_MAX_BYTES = FILENAME_SEGMENT_MAX_BYTES - STORAGE_KEY_PREFIX_BYTES;
+
 function sanitizeFilenameSegment(segment: string): string {
   const asciiSanitized = Array.from(segment.normalize('NFC'), (char) => {
     if (char.charCodeAt(0) > 0x7f) {
@@ -106,19 +116,19 @@ export function sanitizeFilename(inputName: string): string {
     name = '_' + name;
   }
 
-  // Limit the filename to filesystem NAME_MAX, which is byte-based on Linux/APFS.
+  // Cap below filesystem NAME_MAX (byte-based on Linux/APFS) so the
+  // `${file_id}__` storage prefix still fits once prepended.
   name = truncateLeafWithSuffix(
     name,
     '-' + crypto.randomBytes(3).toString('hex'),
-    FILENAME_SEGMENT_MAX_BYTES,
+    UPLOAD_BASENAME_MAX_BYTES,
   );
 
   return name;
 }
 
-/** Per-path-component byte cap. Mirrors `sanitizeFilename`'s 255-byte
- * basename cap and matches filesystem `NAME_MAX` (255 bytes on Linux/ext4,
- * 255 chars on Windows/NTFS) — without it, `saveBuffer` writes
+/** Per-path-component byte cap. Matches filesystem `NAME_MAX` (255 bytes
+ * on Linux/ext4, 255 chars on Windows/NTFS) — without it, `saveBuffer` writes
  * `${file_id}__${flatName}` and a long artifact name surfaces as
  * `ENAMETOOLONG` and falls back to a download URL instead of persisting. */
 const ARTIFACT_PATH_SEGMENT_MAX_BYTES = FILENAME_SEGMENT_MAX_BYTES;

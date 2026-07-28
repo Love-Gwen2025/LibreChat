@@ -517,9 +517,7 @@ const nativeTools = new Set([
 /** Checks if a tool name is a known built-in tool */
 const isBuiltInTool = (toolName) =>
   Boolean(
-    manifestToolMap[toolName] ||
-      toolkits.some((t) => t.pluginKey === toolName) ||
-      nativeTools.has(toolName),
+    manifestToolMap[toolName] || getToolkitKey({ toolkits, toolName }) || nativeTools.has(toolName),
   );
 
 /**

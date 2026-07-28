@@ -96,6 +96,7 @@ jest.mock('~/cache', () => ({
 }));
 
 const {
+  isBuiltInTool,
   loadAgentTools,
   loadToolsForExecution,
   processRequiredActions,
@@ -173,6 +174,17 @@ describe('ToolService - Action Capability Gating', () => {
       const result = await resolveAgentCapabilities(req, req.config, 'agent_123');
 
       expect(result.size).toBe(0);
+    });
+  });
+
+  describe('isBuiltInTool', () => {
+    it('recognizes explicitly configured child tools from a toolkit', () => {
+      expect(isBuiltInTool('image_gen_oai')).toBe(true);
+      expect(isBuiltInTool('image_edit_oai')).toBe(true);
+    });
+
+    it('rejects tools that do not belong to a manifest toolkit', () => {
+      expect(isBuiltInTool('unknown_tool')).toBe(false);
     });
   });
 

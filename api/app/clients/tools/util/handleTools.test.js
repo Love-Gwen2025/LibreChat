@@ -304,6 +304,32 @@ describe('Tool Handlers', () => {
       delete process.env.SD_WEBUI_URL;
     });
 
+    it('loads only image_gen_oai when it is the requested image tool', async () => {
+      process.env.IMAGE_GEN_OAI_API_KEY = 'test-image-key';
+
+      const result = await loadTools({
+        user: fakeUser._id,
+        agent: { id: 'agent-image' },
+        tools: ['image_gen_oai'],
+        options: { req: { user: { id: fakeUser._id.toString() } } },
+      });
+
+      expect(result.loadedTools.map((tool) => tool.name)).toEqual(['image_gen_oai']);
+    });
+
+    it('loads image_edit_oai only when it is explicitly requested', async () => {
+      process.env.IMAGE_GEN_OAI_API_KEY = 'test-image-key';
+
+      const result = await loadTools({
+        user: fakeUser._id,
+        agent: { id: 'agent-image' },
+        tools: ['image_edit_oai'],
+        options: { req: { user: { id: fakeUser._id.toString() } } },
+      });
+
+      expect(result.loadedTools.map((tool) => tool.name)).toEqual(['image_edit_oai']);
+    });
+
     it('passes request body to chat MCP tool creation and skips stale cache for BODY-scoped servers', async () => {
       const serverName = 'body-scoped';
       const toolKey = `search${Constants.mcp_delimiter}${serverName}`;

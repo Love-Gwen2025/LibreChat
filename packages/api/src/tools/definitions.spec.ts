@@ -4,8 +4,6 @@ import type {
   LoadToolDefinitionsDeps,
   ActionToolDefinition,
 } from './definitions';
-import { toolkitExpansion, toolkitParent } from './toolkits/mapping';
-import { getToolDefinition } from './registry/definitions';
 import { loadToolDefinitions } from './definitions';
 
 describe('definitions.ts', () => {
@@ -691,8 +689,8 @@ describe('definitions.ts', () => {
       });
     });
 
-    describe('toolkit expansion', () => {
-      it('should expand image_gen_oai to include image_edit_oai', async () => {
+    describe('OpenAI image tool selection', () => {
+      it('should expose only image_gen_oai when it is the configured tool', async () => {
         mockIsBuiltInTool.mockImplementation((name) => name === 'image_gen_oai');
 
         const params: LoadToolDefinitionsParams = {
@@ -708,22 +706,20 @@ describe('definitions.ts', () => {
 
         const result = await loadToolDefinitions(params, deps);
 
-        const genDef = result.toolDefinitions.find((d) => d.name === 'image_gen_oai');
-        const editDef = result.toolDefinitions.find((d) => d.name === 'image_edit_oai');
-        expect(genDef).toBeDefined();
-        expect(editDef).toBeDefined();
-        expect(editDef?.parameters).toBeDefined();
+        expect(result.toolDefinitions.map((definition) => definition.name)).toEqual([
+          'image_gen_oai',
+        ]);
         expect(result.toolRegistry.has('image_gen_oai')).toBe(true);
-        expect(result.toolRegistry.has('image_edit_oai')).toBe(true);
+        expect(result.toolRegistry.has('image_edit_oai')).toBe(false);
       });
 
-      it('should not duplicate image_edit_oai when toolkit is the only tool', async () => {
-        mockIsBuiltInTool.mockImplementation((name) => name === 'image_gen_oai');
+      it('should expose image_edit_oai only when it is explicitly configured', async () => {
+        mockIsBuiltInTool.mockImplementation((name) => name === 'image_edit_oai');
 
         const params: LoadToolDefinitionsParams = {
           userId: 'user-123',
           agentId: 'agent-123',
-          tools: ['image_gen_oai'],
+          tools: ['image_edit_oai'],
         };
 
         const deps: LoadToolDefinitionsDeps = {
@@ -733,26 +729,11 @@ describe('definitions.ts', () => {
 
         const result = await loadToolDefinitions(params, deps);
 
-        const editDefs = result.toolDefinitions.filter((d) => d.name === 'image_edit_oai');
-        expect(editDefs).toHaveLength(1);
-      });
-    });
-
-    describe('toolkit mapping invariants', () => {
-      it('toolkitParent should be the inverse of toolkitExpansion', () => {
-        expect(toolkitParent['image_edit_oai']).toBe('image_gen_oai');
-        const parentKeys = Object.keys(toolkitParent).sort();
-        const expansionChildren = Object.values(toolkitExpansion).flat().sort();
-        expect(parentKeys).toEqual(expansionChildren);
-      });
-
-      it('every toolkitExpansion entry should reference existing tool definitions', () => {
-        for (const [parent, children] of Object.entries(toolkitExpansion)) {
-          expect(getToolDefinition(parent)).toBeDefined();
-          for (const child of children) {
-            expect(getToolDefinition(child)).toBeDefined();
-          }
-        }
+        expect(result.toolDefinitions.map((definition) => definition.name)).toEqual([
+          'image_edit_oai',
+        ]);
+        expect(result.toolRegistry.has('image_gen_oai')).toBe(false);
+        expect(result.toolRegistry.has('image_edit_oai')).toBe(true);
       });
     });
 

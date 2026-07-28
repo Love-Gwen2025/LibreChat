@@ -8,9 +8,7 @@ When to use \`image_gen_oai\`:
 - To create entirely new images from detailed text descriptions that do NOT reference any image files.
 
 When NOT to use \`image_gen_oai\`:
-- If the user has uploaded any images and requests modifications, enhancements, or remixing based on those uploads → use \`image_edit_oai\` instead.
-
-Generated image IDs will be returned in the response, so you can refer to them in future requests made to \`image_edit_oai\`.` as const;
+- If the user asks to modify, enhance, or remix an existing image. This tool only creates new images from text.` as const;
 
 const getImageGenDescription = () => {
   return process.env.IMAGE_GEN_OAI_DESCRIPTION || DEFAULT_IMAGE_GEN_DESCRIPTION;

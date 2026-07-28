@@ -40,7 +40,7 @@ modelSpecs:
   list:
     - name: "image-generation"
       label: "like助手"
-      description: "描述你想要的画面"
+      description: "可以聊天、分析，也可以生成图片"
       default: true
       showInMenu: true
       showOnLanding: true

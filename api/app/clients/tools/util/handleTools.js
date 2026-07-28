@@ -236,6 +236,7 @@ const loadTools = async ({
   };
 
   const requestedTools = {};
+  const toolkitLoaders = {};
   const hasMCPTools = tools.some((toolName) => toolName && mcpToolPattern.test(toolName));
   const mcpPermissionContext =
     options.mcpPermissionContext ?? createMCPPermissionContext(options.req);
@@ -419,14 +420,20 @@ const loadTools = async ({
 
     const toolKey = customConstructors[tool] ? tool : toolkitParent[tool];
     if (toolKey && customConstructors[toolKey]) {
-      if (!requestedTools[toolKey]) {
+      if (!toolkitLoaders[toolKey]) {
         let cached;
-        requestedTools[toolKey] = async () => {
+        toolkitLoaders[toolKey] = async () => {
           cached ??= customConstructors[toolKey](toolContextMap, dynamicToolContextMap);
           return cached;
         };
       }
-      requestedTools[tool] = requestedTools[toolKey];
+      requestedTools[tool] = async () => {
+        const toolkit = await toolkitLoaders[toolKey]();
+        if (!Array.isArray(toolkit)) {
+          return toolkit;
+        }
+        return toolkit.filter((toolInstance) => toolInstance?.name === tool);
+      };
       continue;
     }
 

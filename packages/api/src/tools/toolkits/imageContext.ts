@@ -30,7 +30,7 @@ export function buildImageToolContext({
     }
     toolContext += `\n\t- ${file.file_id}`;
     if (i === imageFiles.length - 1) {
-      toolContext += `\n\nInclude any you need in the \`image_ids\` array when calling \`${toolName}\` to use them as visual context for generation. You may also include previously referenced or generated image IDs.`;
+      toolContext += `\n\nThese image IDs are verified and available in this turn. Include any you need in the \`image_ids\` array when calling \`${toolName}\` to use them as visual context for generation. For an image-editing request, call \`${toolName}\` with the relevant IDs instead of claiming that image IDs are unavailable or asking the user to upload the same files again. You may also include previously referenced or generated image IDs.`;
     }
   }
   return toolContext;

@@ -2,6 +2,7 @@ const { Constants: AgentConstants } = require('@librechat/agents');
 const {
   Tools,
   Constants,
+  EToolResources,
   EModelEndpoint,
   isActionTool,
   actionDelimiter,
@@ -227,6 +228,26 @@ describe('ToolService - Action Capability Gating', () => {
   describe('loadAgentTools (definitionsOnly=true) — action tool filtering', () => {
     const actionToolName = `get_weather${actionDelimiter}api_example_com`;
     const regularTool = 'calculator';
+
+    it('adds current image IDs when image_edit_oai is explicitly configured', async () => {
+      const capabilities = [AgentCapabilities.tools];
+      const req = createMockReq(capabilities);
+      mockGetEndpointsConfig.mockResolvedValue(createEndpointsConfig(capabilities));
+
+      const result = await loadAgentTools({
+        req,
+        res: {},
+        agent: { id: 'agent_123', tools: ['image_edit_oai'] },
+        tool_resources: {
+          [EToolResources.image_edit]: {
+            files: [{ file_id: 'current-image-123' }],
+          },
+        },
+        definitionsOnly: true,
+      });
+
+      expect(result.dynamicToolContextMap.image_edit_oai).toContain('current-image-123');
+    });
 
     it('should exclude action tools from definitions when actions capability is disabled', async () => {
       const capabilities = [AgentCapabilities.tools, AgentCapabilities.web_search];

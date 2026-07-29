@@ -136,6 +136,7 @@ const {
   FileSources,
   FileContext,
   RetentionMode,
+  EModelEndpoint,
   AgentCapabilities,
 } = require('librechat-data-provider');
 const { mergeFileConfig } = require('librechat-data-provider');
@@ -318,6 +319,80 @@ describe('processAgentFileUpload', () => {
       ).rejects.toThrow('File type text/plain is not supported for text parsing.');
 
       expect(getStrategyFunctions).not.toHaveBeenCalled();
+    });
+
+    test('stores a message image as a visual attachment when image OCR is not configured', async () => {
+      const handleImageUpload = jest.fn().mockResolvedValue({
+        filepath: '/images/user-123/file-uuid-123.png',
+        bytes: 1024,
+        width: 640,
+        height: 480,
+      });
+      getStrategyFunctions.mockReturnValue({ handleImageUpload });
+      const req = makeReq({ mimetype: 'image/png', ocrConfig: null });
+      req.config.imageOutputType = 'png';
+      const metadata = {
+        ...makeMetadata(),
+        message_file: 'true',
+        temp_file_id: 'temp-file-123',
+        endpoint: EModelEndpoint.agents,
+      };
+      const { parseText } = require('@librechat/api');
+
+      await processAgentFileUpload({ req, res: mockRes, metadata });
+
+      expect(handleImageUpload).toHaveBeenCalledWith({
+        req,
+        file: req.file,
+        file_id: 'file-uuid-123',
+        endpoint: EModelEndpoint.agents,
+      });
+      expect(parseText).not.toHaveBeenCalled();
+      expect(db.createFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          file_id: 'file-uuid-123',
+          temp_file_id: 'temp-file-123',
+          source: FileSources.local,
+          type: 'image/png',
+          context: FileContext.message_attachment,
+          width: 640,
+          height: 480,
+        }),
+        true,
+      );
+    });
+
+    test('rejects a persistent image context file when image OCR is not configured', async () => {
+      const req = makeReq({ mimetype: 'image/png', ocrConfig: null });
+      const { parseText } = require('@librechat/api');
+
+      await expect(
+        processAgentFileUpload({ req, res: mockRes, metadata: makeMetadata() }),
+      ).rejects.toThrow('Image OCR is not configured for Agent context files.');
+
+      expect(parseText).not.toHaveBeenCalled();
+      expect(db.createFile).not.toHaveBeenCalled();
+    });
+
+    test('uses configured OCR for image context files instead of visual attachment fallback', async () => {
+      mergeFileConfig.mockReturnValue(makeFileConfig({ ocrSupportedMimeTypes: ['image/png'] }));
+      const req = makeReq({
+        mimetype: 'image/png',
+        ocrConfig: { strategy: FileSources.mistral_ocr },
+      });
+
+      await processAgentFileUpload({ req, res: mockRes, metadata: makeMetadata() });
+
+      expect(checkCapability).toHaveBeenCalledWith(expect.anything(), AgentCapabilities.ocr);
+      expect(getStrategyFunctions).toHaveBeenCalledWith(FileSources.mistral_ocr);
+      expect(db.createFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: FileSources.text,
+          type: 'text/plain',
+          text: 'extracted text',
+        }),
+        true,
+      );
     });
 
     test.each([

@@ -44,7 +44,7 @@ export async function extractFileContext({
     }
 
     const source = file.source ?? FileSources.local;
-    if (source === FileSources.text && file.text) {
+    if (source === FileSources.text && file.text && !file.type?.startsWith('image/')) {
       const {
         text: limitedText,
         tokenCount,

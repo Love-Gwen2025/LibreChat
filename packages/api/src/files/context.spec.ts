@@ -3,12 +3,13 @@ import type { IMongoFile } from '@librechat/data-schemas';
 import type { ServerRequest } from '~/types';
 import { extractFileContext } from './context';
 
-const makeFile = (file_id: string, text: string): IMongoFile =>
+const makeFile = (file_id: string, text: string, type = 'text/plain'): IMongoFile =>
   ({
     file_id,
     filename: `${file_id}.txt`,
     source: FileSources.text,
     text,
+    type,
   }) as IMongoFile;
 
 const makeRequest = (fileTokenLimit: number): ServerRequest =>
@@ -39,5 +40,17 @@ describe('extractFileContext', () => {
     expect(context).toContain('123456');
     expect(context).toContain('abc');
     expect(context).not.toContain('abcd');
+  });
+
+  it('ignores legacy image records whose binary content was stored as text', async () => {
+    const tokenCountFn = jest.fn((text: string) => text.length);
+    const context = await extractFileContext({
+      attachments: [makeFile('corrupt-image', '\u0000PNG binary', 'image/png')],
+      req: makeRequest(10),
+      tokenCountFn,
+    });
+
+    expect(context).toBeUndefined();
+    expect(tokenCountFn).not.toHaveBeenCalled();
   });
 });

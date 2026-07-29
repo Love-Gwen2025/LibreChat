@@ -797,6 +797,13 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
       appConfig?.ocr != null &&
       fileConfig.checkType(file.mimetype, fileConfig.ocr?.supportedMimeTypes || []);
 
+    if (isImage && !shouldUseConfiguredOCR) {
+      if (messageAttachment) {
+        return await processImageFile({ req, res, metadata });
+      }
+      throw new Error('Image OCR is not configured for Agent context files.');
+    }
+
     const shouldUseDocumentParser =
       !shouldUseConfiguredOCR && documentParserMimeTypes.some((regex) => regex.test(file.mimetype));
 

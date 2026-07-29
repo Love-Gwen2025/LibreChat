@@ -1018,10 +1018,10 @@ async function loadToolDefinitionsWrapper({ req, res, agent, streamId = null, to
 
   const imageFiles = tool_resources?.[EToolResources.image_edit]?.files ?? [];
   if (imageFiles.length > 0) {
-    const hasOaiImageGen = filteredTools.includes('image_gen_oai');
+    const hasOaiImageEdit = filteredTools.includes('image_edit_oai');
     const hasGeminiImageGen = filteredTools.includes('gemini_image_gen');
 
-    if (hasOaiImageGen) {
+    if (hasOaiImageEdit) {
       const toolContext = buildImageToolContext({
         imageFiles,
         toolName: `${EToolResources.image_edit}_oai`,

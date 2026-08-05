@@ -328,6 +328,18 @@ describe('OpenAIChatCompletionController', () => {
   });
 
   describe('token usage recording', () => {
+    it('passes request files into agent initialization', async () => {
+      const { initializeAgent } = require('@librechat/api');
+      req.body.files = [{ file_id: 'uploaded-image-1' }];
+
+      await OpenAIChatCompletionController(req, res);
+
+      expect(initializeAgent).toHaveBeenCalledWith(
+        expect.objectContaining({ requestFiles: req.body.files }),
+        expect.any(Object),
+      );
+    });
+
     it('should call recordCollectedUsage after successful non-streaming completion', async () => {
       await OpenAIChatCompletionController(req, res);
 

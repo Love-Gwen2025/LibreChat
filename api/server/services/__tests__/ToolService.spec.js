@@ -233,6 +233,22 @@ describe('ToolService - Action Capability Gating', () => {
       const capabilities = [AgentCapabilities.tools];
       const req = createMockReq(capabilities);
       mockGetEndpointsConfig.mockResolvedValue(createEndpointsConfig(capabilities));
+      mockLoadToolDefinitions.mockResolvedValueOnce({
+        toolDefinitions: [
+          {
+            name: 'image_edit_oai',
+            description: 'Edit an image',
+            parameters: {
+              type: 'object',
+              properties: {
+                image_ids: { type: 'array', description: 'Referenced image IDs' },
+              },
+            },
+          },
+        ],
+        toolRegistry: new Map(),
+        hasDeferredTools: false,
+      });
 
       const result = await loadAgentTools({
         req,
@@ -247,6 +263,10 @@ describe('ToolService - Action Capability Gating', () => {
       });
 
       expect(result.dynamicToolContextMap.image_edit_oai).toContain('current-image-123');
+      expect(result.toolDefinitions[0].description).toContain('current-image-123');
+      expect(result.toolDefinitions[0].parameters.properties.image_ids.description).toContain(
+        'current-image-123',
+      );
     });
 
     it('should exclude action tools from definitions when actions capability is disabled', async () => {

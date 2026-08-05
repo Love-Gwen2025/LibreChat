@@ -16,6 +16,7 @@ const {
   isActionDomainAllowed,
   buildWebSearchContext,
   buildImageToolContext,
+  enrichImageEditToolDefinitions,
   buildToolClassification,
   getMissingCustomUserVars,
   buildWebSearchDynamicContext,
@@ -1022,6 +1023,11 @@ async function loadToolDefinitionsWrapper({ req, res, agent, streamId = null, to
     const hasGeminiImageGen = filteredTools.includes('gemini_image_gen');
 
     if (hasOaiImageEdit) {
+      ({ toolDefinitions, toolRegistry } = enrichImageEditToolDefinitions({
+        imageFiles,
+        toolDefinitions,
+        toolRegistry,
+      }));
       const toolContext = buildImageToolContext({
         imageFiles,
         toolName: `${EToolResources.image_edit}_oai`,

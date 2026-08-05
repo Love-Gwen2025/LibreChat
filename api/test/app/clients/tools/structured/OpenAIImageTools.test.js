@@ -30,6 +30,7 @@ jest.mock('@librechat/api', () => ({
   extractBaseURL: jest.fn((url) => url),
   getProxyDispatcher: jest.fn(() => undefined),
   applyAxiosProxyConfig: jest.fn(),
+  formatImageToolError: jest.requireActual('@librechat/api').formatImageToolError,
 }));
 
 jest.mock('~/server/services/Files/strategies', () => ({
@@ -275,5 +276,36 @@ describe('OpenAIImageTools - IMAGE_GEN_OAI_MODEL environment variable', () => {
       image_url: { url: imageURL },
     });
     expect(response[0].text).toContain('referenced_image_ids: ["source-image-id"]');
+  });
+
+  it('returns the upstream content policy code and message to the agent', async () => {
+    axios.post.mockRejectedValue({
+      message: 'Request failed with status code 400',
+      response: {
+        status: 400,
+        data: {
+          error: {
+            code: 'content_policy_violation',
+            type: 'image_generation_user_error',
+            message: 'This image request cannot be processed.',
+          },
+        },
+      },
+    });
+
+    const [, imageEditTool] = createOpenAIImageTools({
+      isAgent: true,
+      override: false,
+      req: { user: { id: 'test-user' } },
+    });
+
+    const [result] = await imageEditTool.func({
+      prompt: 'edit the image',
+      image_ids: ['source-image-id'],
+    });
+
+    expect(result).toContain('content_policy_violation');
+    expect(result).toContain('This image request cannot be processed.');
+    expect(result).not.toContain('OpenAI API may be unavailable');
   });
 });

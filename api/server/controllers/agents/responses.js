@@ -424,6 +424,7 @@ const createResponse = async (req, res) => {
     });
 
     const manualSkills = extractManualSkills(req.body);
+    const requestFiles = Array.isArray(req.body.files) ? req.body.files : [];
 
     const primaryScopedSkillIds = resolveAgentScopedSkillIds({
       agent,
@@ -443,7 +444,7 @@ const createResponse = async (req, res) => {
         req,
         res,
         loadTools,
-        requestFiles: [],
+        requestFiles,
         conversationId,
         parentMessageId,
         agent,
@@ -505,7 +506,7 @@ const createResponse = async (req, res) => {
           allowedProviders,
           modelsConfig,
           loadTools,
-          requestFiles: [],
+          requestFiles,
           conversationId,
           parentMessageId,
           // The route enforces REMOTE_AGENT on the primary; every discovered

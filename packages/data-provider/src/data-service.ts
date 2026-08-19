@@ -23,10 +23,6 @@ export function revokeAllUserKeys(): Promise<unknown> {
   return request.delete(endpoints.revokeAllUserKeys());
 }
 
-export function deleteUser(payload?: t.TDeleteUserRequest): Promise<unknown> {
-  return request.deleteWithOptions(endpoints.deleteUser(), { data: payload });
-}
-
 export function getFavorites(): Promise<q.TUserFavorite[]> {
   return request.get(`${endpoints.apiBaseUrl()}/api/user/settings/favorites`);
 }

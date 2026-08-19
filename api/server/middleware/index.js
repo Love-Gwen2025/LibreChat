@@ -5,7 +5,6 @@ const buildEndpointOption = require('./buildEndpointOption');
 const validateMessageReq = require('./validateMessageReq');
 const checkDomainAllowed = require('./checkDomainAllowed');
 const requireLocalAuth = require('./requireLocalAuth');
-const canDeleteAccount = require('./canDeleteAccount');
 const accessResources = require('./accessResources');
 const requireLdapAuth = require('./requireLdapAuth');
 const abortMiddleware = require('./abortMiddleware');
@@ -43,7 +42,6 @@ module.exports = {
   checkInviteUser,
   requireLdapAuth,
   requireLocalAuth,
-  canDeleteAccount,
   configMiddleware,
   checkDomainAllowed,
   validateMessageReq,

@@ -47,8 +47,6 @@ export const balance = () => `${BASE_URL}/api/balance`;
 
 export const userPlugins = () => `${BASE_URL}/api/user/plugins`;
 
-export const deleteUser = () => `${BASE_URL}/api/user/delete`;
-
 const messagesRoot = `${BASE_URL}/api/messages`;
 
 export const messages = (params: q.MessagesListParams) => {

@@ -66,6 +66,8 @@ function createDeps(overrides: Partial<AdminUsersDeps> = {}): AdminUsersDeps {
       .mockResolvedValue({ deletedCount: 1, message: 'User was deleted successfully.' }),
     deleteConfig: jest.fn().mockResolvedValue(null),
     deleteAclEntries: jest.fn().mockResolvedValue(undefined),
+    hashPassword: jest.fn().mockResolvedValue('hashed-password'),
+    minPasswordLength: 8,
     updateUser: jest.fn().mockResolvedValue(mockUser()),
     updateUserAgentModels: jest.fn().mockResolvedValue(mockUser()),
     deleteAllUserSessions: jest.fn().mockResolvedValue({ deletedCount: 1 }),
@@ -823,6 +825,97 @@ describe('createAdminUsersHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to update user name' });
+    });
+  });
+
+  describe('updateUserPassword', () => {
+    it('hashes the new password, updates the user, and revokes existing sessions', async () => {
+      const hashPassword = jest.fn().mockResolvedValue('secure-password-hash');
+      const deps = createDeps({ hashPassword });
+      const handlers = createAdminUsersHandlers(deps);
+      const password = '  Password123!  ';
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { password },
+      });
+
+      await handlers.updateUserPassword(req, res);
+
+      expect(hashPassword).toHaveBeenCalledWith(password);
+      expect(deps.updateUser).toHaveBeenCalledWith(validUserId, {
+        password: 'secure-password-hash',
+      });
+      expect(deps.deleteAllUserSessions).toHaveBeenCalledWith(validUserId);
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({ message: 'Password updated successfully' });
+    });
+
+    it.each([
+      [undefined, 'password must be a string'],
+      [123, 'password must be a string'],
+      ['short', 'password must be between 8 and 128 characters'],
+      [' '.repeat(8), 'password cannot contain only spaces'],
+      ['a'.repeat(129), 'password must be between 8 and 128 characters'],
+    ])('rejects invalid password %p', async (password, error) => {
+      const deps = createDeps();
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { password },
+      });
+
+      await handlers.updateUserPassword(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error });
+      expect(deps.hashPassword).not.toHaveBeenCalled();
+      expect(deps.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('uses the configured minimum password length', async () => {
+      const deps = createDeps({ minPasswordLength: 12 });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { password: 'Password1!' },
+      });
+
+      await handlers.updateUserPassword(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({
+        error: 'password must be between 12 and 128 characters',
+      });
+    });
+
+    it('returns 404 without revoking sessions when the user does not exist', async () => {
+      const deps = createDeps({ updateUser: jest.fn().mockResolvedValue(null) });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validUserId },
+        body: { password: 'Password123!' },
+      });
+
+      await handlers.updateUserPassword(req, res);
+
+      expect(status).toHaveBeenCalledWith(404);
+      expect(json).toHaveBeenCalledWith({ error: 'User not found' });
+      expect(deps.deleteAllUserSessions).not.toHaveBeenCalled();
+    });
+
+    it('keeps the password update successful when session revocation fails', async () => {
+      const deps = createDeps({
+        deleteAllUserSessions: jest.fn().mockRejectedValue(new Error('session store down')),
+      });
+      const handlers = createAdminUsersHandlers(deps);
+      const { req, res, status } = createReqRes({
+        params: { id: validUserId },
+        body: { password: 'Password123!' },
+      });
+
+      await handlers.updateUserPassword(req, res);
+
+      expect(status).toHaveBeenCalledWith(200);
     });
   });
 

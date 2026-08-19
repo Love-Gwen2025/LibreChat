@@ -18,6 +18,7 @@ const mockHandlers = {
   listUsers: jest.fn((_req, res) => res.status(200).json({ users: [] })),
   searchUsers: jest.fn((_req, res) => res.status(200).json({ users: [] })),
   updateUserName: jest.fn((_req, res) => res.status(200).json({})),
+  updateUserPassword: jest.fn((_req, res) => res.status(200).json({})),
   updateUserRole: jest.fn((_req, res) => res.status(200).json({})),
   updateUserStatus: jest.fn((_req, res) => res.status(200).json({})),
   getUserAgentModels: jest.fn((req, res) => res.status(200).json({ config: req.config })),
@@ -89,5 +90,20 @@ describe('admin user name route', () => {
       .expect(200);
 
     expect(mockHandlers.updateUserName).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('admin user password route', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('routes PATCH /:id/password to the password update handler', async () => {
+    await request(createApp())
+      .patch(`/api/admin/users/${userId}/password`)
+      .send({ password: 'Password123!' })
+      .expect(200);
+
+    expect(mockHandlers.updateUserPassword).toHaveBeenCalledTimes(1);
   });
 });

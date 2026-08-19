@@ -15,7 +15,6 @@ const ctx: SettingsContextValue = {
   hasPrompts: false,
   isLocalProvider: true,
   twoFactorEnabled: false,
-  allowAccountDeletion: true,
   aboutEnabled: false,
   engineTTS: 'browser',
 };

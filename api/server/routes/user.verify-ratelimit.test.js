@@ -6,7 +6,6 @@ const mockVerifyEmailController = jest.fn((req, res) => res.status(204).end());
 
 jest.mock('~/server/controllers/UserController', () => ({
   getUserController: jest.fn((req, res) => res.status(204).end()),
-  deleteUserController: jest.fn((req, res) => res.status(204).end()),
   acceptTermsController: jest.fn((req, res) => res.status(204).end()),
   verifyEmailController: (...args) => mockVerifyEmailController(...args),
   getTermsStatusController: jest.fn((req, res) => res.status(204).end()),
@@ -18,8 +17,6 @@ jest.mock('~/server/middleware', () => {
   const pass = (req, res, next) => next();
   return {
     requireJwtAuth: pass,
-    canDeleteAccount: pass,
-    configMiddleware: pass,
     verifyEmailLimiter: pass,
     verifyEmailSubmissionLimiter: (...args) => mockVerifyEmailSubmissionLimiter(...args),
   };
@@ -67,5 +64,11 @@ describe('POST /api/user/verify rate limiting', () => {
 
     expect(response.body).toEqual({ message: 'Too many verification attempts' });
     expect(mockVerifyEmailController).not.toHaveBeenCalled();
+  });
+
+  it('does not expose the self-service account deletion route', async () => {
+    const response = await request(app).delete('/api/user/delete');
+
+    expect(response.status).toBe(404);
   });
 });

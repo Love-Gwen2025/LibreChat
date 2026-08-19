@@ -573,8 +573,6 @@ export type TRegenerateBackupCodesResponse = {
   backupCodesHash: TBackupCode[];
 };
 
-export type TDeleteUserRequest = TOTPVerificationPayload;
-
 export type TRequestPasswordReset = {
   email: string;
 };

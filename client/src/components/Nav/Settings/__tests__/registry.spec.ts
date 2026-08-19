@@ -11,6 +11,10 @@ describe('settings registry', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('does not expose self-service account deletion', () => {
+    expect(registry.some((entry) => entry.id === 'deleteAccount')).toBe(false);
+  });
+
   it('references a valid tab and section for every entry', () => {
     for (const entry of registry) {
       const sections = validTabSections.get(entry.tab);

@@ -1,4 +1,3 @@
-const mongoose = require('mongoose');
 const { logger, getTenantId, webSearchKeys } = require('@librechat/data-schemas');
 const {
   getNewS3URL,
@@ -7,21 +6,12 @@ const {
   MCPTokenStorage,
   normalizeHttpError,
   extractWebSearchEnvVars,
-  deleteAllSharedLinksWithCleanup,
 } = require('@librechat/api');
-const {
-  Tools,
-  CacheKeys,
-  Constants,
-  FileSources,
-  ResourceType,
-} = require('librechat-data-provider');
+const { Tools, CacheKeys, Constants, FileSources } = require('librechat-data-provider');
 const { updateUserPluginAuth, deleteUserPluginAuth } = require('~/server/services/PluginService');
-const { verifyOTPOrBackupCode } = require('~/server/services/twoFactorService');
 const { verifyEmail, resendVerificationEmail } = require('~/server/services/AuthService');
 const { getMCPManager, getFlowStateManager, getMCPServersRegistry } = require('~/config');
 const { invalidateCachedTools } = require('~/server/services/Config/getCachedTools');
-const { processDeleteRequest } = require('~/server/services/Files/process');
 const { getAppConfig } = require('~/server/services/Config');
 const { getLogStores } = require('~/cache');
 const db = require('~/models');
@@ -113,91 +103,6 @@ const acceptTermsController = async (req, res) => {
   } catch (error) {
     logger.error('Error accepting terms:', error);
     res.status(500).json({ message: 'Error accepting terms' });
-  }
-};
-
-const deleteUserFiles = async (req) => {
-  try {
-    const userFiles = await db.getFiles({ user: req.user.id });
-    await processDeleteRequest({
-      req,
-      files: userFiles,
-    });
-  } catch (error) {
-    logger.error('[deleteUserFiles]', error);
-  }
-};
-
-/**
- * Deletes MCP servers solely owned by the user and cleans up their ACLs.
- * Disconnects live sessions for deleted servers before removing DB records.
- * Servers with other owners are left intact; the caller is responsible for
- * removing the user's own ACL principal entries separately.
- *
- * Also handles legacy (pre-ACL) MCP servers that only have the author field set,
- * ensuring they are not orphaned if no permission migration has been run.
- * @param {string} userId - The ID of the user.
- */
-const deleteUserMcpServers = async (userId) => {
-  try {
-    const MCPServer = mongoose.models.MCPServer;
-    const AclEntry = mongoose.models.AclEntry;
-    if (!MCPServer) {
-      return;
-    }
-
-    const userObjectId = new mongoose.Types.ObjectId(userId);
-    const soleOwnedIds = await db.getSoleOwnedResourceIds(userObjectId, ResourceType.MCPSERVER);
-
-    const authoredServers = await MCPServer.find({ author: userObjectId })
-      .select('_id serverName')
-      .lean();
-
-    const migratedEntries =
-      authoredServers.length > 0
-        ? await AclEntry.find({
-            resourceType: ResourceType.MCPSERVER,
-            resourceId: { $in: authoredServers.map((s) => s._id) },
-          })
-            .select('resourceId')
-            .lean()
-        : [];
-    const migratedIds = new Set(migratedEntries.map((e) => e.resourceId.toString()));
-    const legacyServers = authoredServers.filter((s) => !migratedIds.has(s._id.toString()));
-    const legacyServerIds = legacyServers.map((s) => s._id);
-
-    const allServerIdsToDelete = [...soleOwnedIds, ...legacyServerIds];
-
-    if (allServerIdsToDelete.length === 0) {
-      return;
-    }
-
-    const aclOwnedServers =
-      soleOwnedIds.length > 0
-        ? await MCPServer.find({ _id: { $in: soleOwnedIds } })
-            .select('serverName')
-            .lean()
-        : [];
-    const allServersToDelete = [...aclOwnedServers, ...legacyServers];
-
-    const mcpManager = getMCPManager();
-    if (mcpManager) {
-      await Promise.all(
-        allServersToDelete.map(async (s) => {
-          await mcpManager.disconnectUserConnection(userId, s.serverName);
-          await invalidateCachedTools({ userId, serverName: s.serverName });
-        }),
-      );
-    }
-
-    await AclEntry.deleteMany({
-      resourceType: ResourceType.MCPSERVER,
-      resourceId: { $in: allServerIdsToDelete },
-    });
-
-    await MCPServer.deleteMany({ _id: { $in: allServerIdsToDelete } });
-  } catch (error) {
-    logger.error('[deleteUserMcpServers] General error:', error);
   }
 };
 
@@ -329,63 +234,6 @@ const updateUserPluginsController = async (req, res) => {
     return res.status(normalized.status).send({ message: normalized.message });
   } catch (err) {
     logger.error('[updateUserPluginsController]', err);
-    return res.status(500).json({ message: 'Something went wrong.' });
-  }
-};
-
-const deleteUserController = async (req, res) => {
-  const { user } = req;
-
-  try {
-    const existingUser = await db.getUserById(
-      user.id,
-      '+totpSecret +backupCodes _id twoFactorEnabled',
-    );
-    if (existingUser && existingUser.twoFactorEnabled) {
-      const { token, backupCode } = req.body;
-      const result = await verifyOTPOrBackupCode({ user: existingUser, token, backupCode });
-
-      if (!result.verified) {
-        const msg =
-          result.message ??
-          'TOTP token or backup code is required to delete account with 2FA enabled';
-        return res.status(result.status ?? 400).json({ message: msg });
-      }
-    }
-
-    await db.deleteMessages({ user: user.id });
-    await db.deleteAllUserSessions({ userId: user.id });
-    await db.deleteTransactions({ user: user.id });
-    await db.deleteUserKey({ userId: user.id, all: true });
-    await db.deleteBalances({ user: user._id });
-    await db.deletePresets(user.id);
-    try {
-      await db.deleteConvos(user.id);
-    } catch (error) {
-      logger.error('[deleteUserController] Error deleting user convos, likely no convos', error);
-    }
-    await deleteUserPluginAuth(user.id, null, true);
-    await db.deleteUserById(user.id);
-    await deleteAllSharedLinksWithCleanup(user.id);
-    await deleteUserFiles(req);
-    await db.deleteFiles(null, user.id);
-    await db.deleteToolCalls(user.id);
-    await db.deleteUserAgents(user.id);
-    await db.deleteAllAgentApiKeys(user._id);
-    await db.deleteAssistants({ user: user.id });
-    await db.deleteConversationTags({ user: user.id });
-    await db.deleteAllUserMemories(user.id);
-    await db.deleteUserPrompts(user.id);
-    await db.deleteUserSkills(user.id);
-    await deleteUserMcpServers(user.id);
-    await db.deleteActions({ user: user.id });
-    await db.deleteTokens({ userId: user.id });
-    await db.removeUserFromAllGroups(user.id);
-    await db.deleteAclEntries({ principalId: user._id });
-    logger.info(`User deleted account. Email: ${user.email} ID: ${user.id}`);
-    res.status(200).send({ message: 'User deleted' });
-  } catch (err) {
-    logger.error('[deleteUserController]', err);
     return res.status(500).json({ message: 'Something went wrong.' });
   }
 };
@@ -599,10 +447,8 @@ module.exports = {
   getUserController,
   getTermsStatusController,
   acceptTermsController,
-  deleteUserController,
   verifyEmailController,
   updateUserPluginsController,
   resendVerificationController,
-  deleteUserMcpServers,
   maybeUninstallOAuthMCP,
 };

@@ -9,11 +9,6 @@ jest.mock('~/server/services/Config/ldap', () => ({
   getLdapConfig: jest.fn(() => null),
 }));
 
-const mockHasCapability = jest.fn();
-jest.mock('~/server/middleware/roles/capabilities', () => ({
-  hasCapability: (...args) => mockHasCapability(...args),
-}));
-
 const mockGetTenantId = jest.fn(() => undefined);
 jest.mock('@librechat/data-schemas', () => ({
   ...jest.requireActual('@librechat/data-schemas'),
@@ -100,7 +95,6 @@ afterEach(() => {
   delete process.env.SAML_ISSUER;
   delete process.env.SAML_CERT;
   delete process.env.SAML_SESSION_SECRET;
-  delete process.env.ALLOW_ACCOUNT_DELETION;
   delete process.env.ANALYTICS_GTM_ID;
   delete process.env.CUSTOM_FOOTER;
   delete process.env.HELP_AND_FAQ_URL;
@@ -181,7 +175,6 @@ describe('GET /api/config', () => {
       expect(response.body).not.toHaveProperty('publicSharedLinksEnabled');
       expect(response.body).not.toHaveProperty('analyticsGtmId');
       expect(response.body).not.toHaveProperty('openidReuseTokens');
-      expect(response.body).not.toHaveProperty('allowAccountDeletion');
       expect(response.body).not.toHaveProperty('customFooter');
     });
 
@@ -202,7 +195,6 @@ describe('GET /api/config', () => {
       expect(response.body).not.toHaveProperty('bundlerURL');
       expect(response.body).not.toHaveProperty('staticBundlerURL');
       expect(response.body).not.toHaveProperty('helpAndFaqURL');
-      expect(response.body).not.toHaveProperty('allowAccountDeletion');
     });
 
     it('should include socialLogins and turnstile from base config', async () => {
@@ -465,40 +457,6 @@ describe('GET /api/config', () => {
           startBalance: 50000,
         }),
       );
-    });
-
-    it('should set allowAccountDeletion to false for authenticated users without ACCESS_ADMIN', async () => {
-      process.env.ALLOW_ACCOUNT_DELETION = 'false';
-      mockGetAppConfig.mockResolvedValue(baseAppConfig);
-      mockHasCapability.mockResolvedValue(false);
-      const app = createApp(mockUser);
-
-      const response = await request(app).get('/api/config');
-
-      expect(response.body.allowAccountDeletion).toBe(false);
-      expect(mockHasCapability).toHaveBeenCalled();
-    });
-
-    it('should override allowAccountDeletion to true for users with ACCESS_ADMIN capability', async () => {
-      process.env.ALLOW_ACCOUNT_DELETION = 'false';
-      mockGetAppConfig.mockResolvedValue(baseAppConfig);
-      mockHasCapability.mockResolvedValue(true);
-      const app = createApp(mockUser);
-
-      const response = await request(app).get('/api/config');
-
-      expect(response.body.allowAccountDeletion).toBe(true);
-      expect(mockHasCapability).toHaveBeenCalled();
-    });
-
-    it('should not call hasCapability when allowAccountDeletion is already true', async () => {
-      mockGetAppConfig.mockResolvedValue(baseAppConfig);
-      const app = createApp(mockUser);
-
-      const response = await request(app).get('/api/config');
-
-      expect(response.body.allowAccountDeletion).toBe(true);
-      expect(mockHasCapability).not.toHaveBeenCalled();
     });
 
     it('should return 500 when getAppConfig throws', async () => {

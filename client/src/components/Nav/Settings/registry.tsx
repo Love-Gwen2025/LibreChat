@@ -24,7 +24,6 @@ import BackupCodesItem from '../SettingsTabs/Account/BackupCodesItem';
 import { EngineSTTSetting, EngineTTSSetting } from './SpeechControls';
 import FontSizeSelector from '../SettingsTabs/Chat/FontSizeSelector';
 import AdvancedPrompts from '../SettingsTabs/Chat/AdvancedPrompts';
-import DeleteAccount from '../SettingsTabs/Account/DeleteAccount';
 import { ForkSettings } from '../SettingsTabs/Chat/ForkSettings';
 import ChatDirection from '../SettingsTabs/Chat/ChatDirection';
 import { DeleteCache } from '../SettingsTabs/Data/DeleteCache';
@@ -549,16 +548,6 @@ export const registry: SettingEntry[] = [
     show: (ctx) => ctx.balanceEnabled,
     Component: AutoRefill,
   },
-  // Account · Danger zone
-  {
-    id: 'deleteAccount',
-    tab: ACCOUNT,
-    section: 'danger',
-    labelKey: 'com_ui_settings_label_delete_account',
-    show: (ctx) => ctx.allowAccountDeletion,
-    Component: DeleteAccount,
-  },
-
   // About
   {
     id: 'about',

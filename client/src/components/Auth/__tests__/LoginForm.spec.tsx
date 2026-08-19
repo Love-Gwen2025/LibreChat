@@ -39,7 +39,6 @@ const mockStartupConfig: TStartupConfig = {
   helpAndFaqURL: '',
   sharedLinksEnabled: true,
   publicSharedLinksEnabled: true,
-  allowAccountDeletion: true,
 };
 
 const setup = ({

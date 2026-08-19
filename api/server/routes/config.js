@@ -10,8 +10,7 @@ const {
   isFileSnapshotEnabled,
 } = require('@librechat/api');
 const { EModelEndpoint, defaultSocialLogins } = require('librechat-data-provider');
-const { logger, getTenantId, SystemCapabilities } = require('@librechat/data-schemas');
-const { hasCapability } = require('~/server/middleware/roles/capabilities');
+const { logger, getTenantId } = require('@librechat/data-schemas');
 const { getLdapConfig } = require('~/server/services/Config/ldap');
 const { getRumConfig } = require('~/server/services/Config/rum');
 const { getAppConfig } = require('~/server/services/Config/app');
@@ -142,10 +141,6 @@ function buildPostLoginPayload() {
     sharedLinksEnabled,
     publicSharedLinksEnabled,
     openidReuseTokens,
-    /** Read inline (not module-level) for per-request evaluation and test isolation */
-    allowAccountDeletion:
-      process.env.ALLOW_ACCOUNT_DELETION === undefined ||
-      isEnabled(process.env.ALLOW_ACCOUNT_DELETION),
   };
 
   return payload;
@@ -289,23 +284,6 @@ router.get('/', async function (req, res) {
     const buildInfo = buildBuildInfoPayload(appConfig?.interfaceConfig);
     if (buildInfo) {
       payload.buildInfo = buildInfo;
-    }
-
-    if (!payload.allowAccountDeletion) {
-      try {
-        const userId = req.user.id ?? req.user._id?.toString();
-        if (userId) {
-          const canDelete = await hasCapability(
-            { id: userId, role: req.user.role ?? '', tenantId: req.user.tenantId },
-            SystemCapabilities.ACCESS_ADMIN,
-          );
-          if (canDelete) {
-            payload.allowAccountDeletion = true;
-          }
-        }
-      } catch (err) {
-        logger.warn(`[config] ACCESS_ADMIN capability check failed: ${err.message}`);
-      }
     }
 
     return res.status(200).send(payload);

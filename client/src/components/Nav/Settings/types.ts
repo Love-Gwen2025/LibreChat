@@ -43,7 +43,6 @@ export interface SettingsContextValue {
   hasPrompts: boolean;
   isLocalProvider: boolean;
   twoFactorEnabled: boolean;
-  allowAccountDeletion: boolean;
   aboutEnabled: boolean;
   engineTTS: string;
 }
@@ -123,7 +122,6 @@ export const TABS: TabMeta[] = [
       { id: 'profile', labelKey: 'com_ui_settings_section_profile' },
       { id: 'security', labelKey: 'com_ui_settings_section_security' },
       { id: 'billing', labelKey: 'com_ui_settings_section_billing' },
-      { id: 'danger', labelKey: 'com_ui_settings_section_danger_zone', danger: true },
     ],
   },
   {

@@ -25,6 +25,7 @@ import {
 const MAX_SEARCH_LENGTH = 200;
 const MIN_USER_NAME_LENGTH = 3;
 const MAX_USER_NAME_LENGTH = 80;
+const MAX_PASSWORD_LENGTH = 128;
 
 const USER_LIST_FIELDS =
   '_id name username email avatar role provider isDisabled allowedAgentModels createdAt updatedAt';
@@ -75,8 +76,6 @@ export interface AdminUsersDeps {
   /**
    * Thin data-layer delete — removes the User document only.
    * This admin endpoint cascades Config, AclEntries, conversations, and messages.
-   * Files, tokens, and plugin auth remain exclusive to the self-delete flow in
-   * `UserController.deleteUserController`.
    */
   deleteUserById: (userId: string) => Promise<UserDeleteResult>;
   deleteConfig: (
@@ -87,6 +86,8 @@ export interface AdminUsersDeps {
     principalType: PrincipalType;
     principalId: string | Types.ObjectId;
   }) => Promise<void>;
+  hashPassword: (password: string) => Promise<string>;
+  minPasswordLength: number;
   updateUser: (userId: string, updateData: Partial<IUser>) => Promise<IUser | null>;
   updateUserAgentModels: (userId: string, models: string[] | null) => Promise<IUser | null>;
   deleteAllUserSessions: (userId: string) => Promise<{ deletedCount?: number }>;
@@ -109,6 +110,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
   searchUsers: (req: ServerRequest, res: Response) => Promise<Response>;
   deleteUser: (req: ServerRequest, res: Response) => Promise<Response>;
   updateUserName: (req: ServerRequest, res: Response) => Promise<Response>;
+  updateUserPassword: (req: ServerRequest, res: Response) => Promise<Response>;
   updateUserRole: (req: ServerRequest, res: Response) => Promise<Response>;
   updateUserStatus: (req: ServerRequest, res: Response) => Promise<Response>;
   getUserAgentModels: (req: ServerRequest, res: Response) => Promise<Response>;
@@ -121,6 +123,8 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     deleteUserById,
     deleteConfig,
     deleteAclEntries,
+    hashPassword,
+    minPasswordLength,
     updateUser,
     updateUserAgentModels,
     deleteAllUserSessions,
@@ -349,6 +353,45 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     } catch (error) {
       logger.error('[adminUsers] updateUserName error:', error);
       return res.status(500).json({ error: 'Failed to update user name' });
+    }
+  }
+
+  async function updateUserPasswordHandler(req: ServerRequest, res: Response) {
+    try {
+      const { id } = req.params as { id: string };
+      const rawPassword = (req.body as { password?: unknown }).password;
+
+      if (!isValidObjectIdString(id)) {
+        return res.status(400).json({ error: 'Invalid user ID format' });
+      }
+      if (typeof rawPassword !== 'string') {
+        return res.status(400).json({ error: 'password must be a string' });
+      }
+      if (rawPassword.length < minPasswordLength || rawPassword.length > MAX_PASSWORD_LENGTH) {
+        return res.status(400).json({
+          error: `password must be between ${minPasswordLength} and ${MAX_PASSWORD_LENGTH} characters`,
+        });
+      }
+      if (rawPassword.trim().length === 0) {
+        return res.status(400).json({ error: 'password cannot contain only spaces' });
+      }
+
+      const password = await hashPassword(rawPassword);
+      const updated = await updateUser(id, { password });
+      if (!updated) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      try {
+        await deleteAllUserSessions(id);
+      } catch (error) {
+        logger.error('[adminUsers] failed to revoke password-reset user sessions:', id, error);
+      }
+
+      return res.status(200).json({ message: 'Password updated successfully' });
+    } catch (error) {
+      logger.error('[adminUsers] updateUserPassword error:', error);
+      return res.status(500).json({ error: 'Failed to update user password' });
     }
   }
 
@@ -584,6 +627,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
     searchUsers: searchUsersHandler,
     deleteUser: deleteUserHandler,
     updateUserName: updateUserNameHandler,
+    updateUserPassword: updateUserPasswordHandler,
     updateUserRole: updateUserRoleHandler,
     updateUserStatus: updateUserStatusHandler,
     getUserAgentModels: getUserAgentModelsHandler,

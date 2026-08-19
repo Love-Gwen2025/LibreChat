@@ -4,7 +4,6 @@ import { MutationKeys, QueryKeys, dataService, request } from 'librechat-data-pr
 import type { UseMutationResult } from '@tanstack/react-query';
 import type * as t from 'librechat-data-provider';
 import useClearStates from '~/hooks/Config/useClearStates';
-import { clearAllConversationStorage } from '~/utils';
 import store from '~/store';
 
 /* login/logout */
@@ -67,27 +66,6 @@ export const useRefreshTokenMutation = (
     onMutate: (vars) => {
       queryClient.removeQueries();
       options?.onMutate?.(vars);
-    },
-  });
-};
-
-/* User */
-export const useDeleteUserMutation = (
-  options?: t.MutationOptions<unknown, t.TDeleteUserRequest | undefined>,
-): UseMutationResult<unknown, unknown, t.TDeleteUserRequest | undefined, unknown> => {
-  const queryClient = useQueryClient();
-  const clearStates = useClearStates();
-  const resetDefaultPreset = useResetRecoilState(store.defaultPreset);
-
-  return useMutation([MutationKeys.deleteUser], {
-    mutationFn: (payload?: t.TDeleteUserRequest) => dataService.deleteUser(payload),
-    ...(options || {}),
-    onSuccess: (...args) => {
-      resetDefaultPreset();
-      clearStates();
-      clearAllConversationStorage();
-      queryClient.removeQueries();
-      options?.onSuccess?.(...args);
     },
   });
 };

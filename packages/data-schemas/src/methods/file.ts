@@ -1,6 +1,6 @@
 import { EToolResources, FileContext } from 'librechat-data-provider';
 import type { FilterQuery, SortOrder, Model } from 'mongoose';
-import type { IMongoFile } from '~/types/file';
+import type { IMongoFile, ListImageAssetsOptions } from '~/types/file';
 import { tenantSafeBulkWrite } from '~/utils/tenantBulkWrite';
 import logger from '../config/winston';
 
@@ -36,6 +36,10 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
     selectFields?: Record<string, 0 | 1> | string | null,
   ) => Promise<IMongoFile[] | null>;
   getExpiredFiles: (limit?: number, now?: Date) => Promise<IMongoFile[]>;
+  listImageAssets: (
+    options?: ListImageAssetsOptions,
+  ) => Promise<{ files: IMongoFile[]; nextCursor: string | null }>;
+  countImageAssets: (filter?: { userId?: string }) => Promise<number>;
   getToolFilesByIds: (
     fileIds: string[],
     toolResourceSet?: Set<EToolResources>,
@@ -130,6 +134,74 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
       .sort({ expiredAt: 1 })
       .limit(limit)
       .lean<IMongoFile[]>();
+  }
+
+  async function listImageAssets({
+    cursor,
+    limit = 25,
+    userId,
+  }: ListImageAssetsOptions = {}): Promise<{ files: IMongoFile[]; nextCursor: string | null }> {
+    const File = mongoose.models.File as Model<IMongoFile>;
+    const normalizedLimit = Math.min(Math.max(limit, 1), 100);
+    const filters: FilterQuery<IMongoFile>[] = [
+      { context: FileContext.image_generation },
+      { type: /^image(?:\/|$)/i },
+    ];
+
+    if (userId) {
+      filters.push({ user: userId });
+    }
+
+    if (cursor) {
+      try {
+        const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8')) as {
+          createdAt: string;
+          id: string;
+        };
+        const createdAt = new Date(decoded.createdAt);
+        if (!Number.isNaN(createdAt.getTime()) && mongoose.Types.ObjectId.isValid(decoded.id)) {
+          filters.push({
+            $or: [
+              { createdAt: { $lt: createdAt } },
+              { createdAt, _id: { $lt: new mongoose.Types.ObjectId(decoded.id) } },
+            ],
+          });
+        }
+      } catch {
+        // Invalid cursors are rejected by the HTTP boundary; retain a safe first-page fallback.
+      }
+    }
+
+    const query: FilterQuery<IMongoFile> = { $and: filters };
+    const files = await File.find(query)
+      .select({ text: 0 })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(normalizedLimit + 1)
+      .lean<IMongoFile[]>();
+
+    const hasMore = files.length > normalizedLimit;
+    if (hasMore) {
+      files.pop();
+    }
+
+    const last = files[files.length - 1];
+    const nextCursor =
+      hasMore && last?.createdAt
+        ? Buffer.from(
+            JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last._id.toString() }),
+          ).toString('base64')
+        : null;
+
+    return { files, nextCursor };
+  }
+
+  async function countImageAssets({ userId }: { userId?: string } = {}): Promise<number> {
+    const File = mongoose.models.File as Model<IMongoFile>;
+    return await File.countDocuments({
+      context: FileContext.image_generation,
+      type: /^image(?:\/|$)/i,
+      ...(userId ? { user: userId } : {}),
+    });
   }
 
   /**
@@ -568,6 +640,8 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
     findFileById,
     getFiles,
     getExpiredFiles,
+    listImageAssets,
+    countImageAssets,
     getToolFilesByIds,
     getCodeGeneratedFiles,
     getUserCodeFiles,

@@ -12,6 +12,7 @@ const adminConversations = require('./admin/conversations');
 const adminAuditLog = require('./admin/audit');
 const adminUsage = require('./admin/usage');
 const adminImageTasks = require('./admin/imageTasks');
+const adminImageAssets = require('./admin/imageAssets');
 const endpoints = require('./endpoints');
 const staticRoute = require('./static');
 const messages = require('./messages');
@@ -55,6 +56,7 @@ module.exports = {
   adminAuditLog,
   adminUsage,
   adminImageTasks,
+  adminImageAssets,
   keys,
   apiKeys,
   user,

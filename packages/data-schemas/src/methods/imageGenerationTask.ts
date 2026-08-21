@@ -47,6 +47,7 @@ export function createImageGenerationTaskMethods(mongoose: typeof import('mongoo
     userId?: string;
     status?: ImageGenerationTaskStatus;
   }) => Promise<number>;
+  removeImageGenerationTaskOutput: (fileId: string) => Promise<number>;
 } {
   const getModel = () => mongoose.models.ImageGenerationTask as Model<IImageGenerationTask>;
 
@@ -162,11 +163,35 @@ export function createImageGenerationTaskMethods(mongoose: typeof import('mongoo
     return await Task.countDocuments(filter);
   }
 
+  async function removeImageGenerationTaskOutput(fileId: string): Promise<number> {
+    if (!fileId) {
+      return 0;
+    }
+
+    const Task = getModel();
+    const tasks = await Task.find({ outputFileIds: fileId }).lean<IImageGenerationTask[]>();
+    if (tasks.length === 0) {
+      return 0;
+    }
+
+    await Promise.all(
+      tasks.map((task) => {
+        const outputFileIds = (task.outputFileIds ?? []).filter((id) => id !== fileId);
+        return Task.updateOne(
+          { _id: task._id },
+          { $set: { outputFileIds, imageCount: outputFileIds.length } },
+        );
+      }),
+    );
+    return tasks.length;
+  }
+
   return {
     createImageGenerationTask,
     updateImageGenerationTask,
     listImageGenerationTasks,
     countImageGenerationTasks,
+    removeImageGenerationTaskOutput,
   };
 }
 

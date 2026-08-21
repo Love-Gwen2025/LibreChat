@@ -211,7 +211,11 @@ const unlinkFile = async (filepath) => {
   try {
     await fs.promises.unlink(filepath);
   } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return;
+    }
     logger.error('Error deleting file:', error);
+    throw error;
   }
 };
 

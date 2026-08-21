@@ -77,3 +77,9 @@ export interface IMongoFile extends Omit<Document, 'model'> {
   updatedAt?: Date;
   tenantId?: string;
 }
+
+export interface ListImageAssetsOptions {
+  cursor?: string | null;
+  limit?: number;
+  userId?: string;
+}

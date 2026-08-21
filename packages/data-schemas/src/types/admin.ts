@@ -280,3 +280,22 @@ export type AdminImageGenerationTask = {
   completedAt?: string;
   error?: string;
 };
+
+export type AdminImageAsset = {
+  id: string;
+  filename: string;
+  mimeType: string;
+  bytes: number;
+  width?: number;
+  height?: number;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  conversationId?: string;
+  messageId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  previewUrl: string;
+};

@@ -18,6 +18,7 @@ endpoints:
     title: "OpenAI"
     models:
       default:
+        - "gpt-5.6"
         - "gpt-5.5"
         - "gpt-5.4"
         - "gpt-5.4-mini"
@@ -29,9 +30,16 @@ endpoints:
 modelSpecs:
   prioritize: true
   list:
+    - name: "gpt-5.6"
+      label: "GPT-5.6"
+      description: "最新旗舰模型"
+      showInMenu: true
+      preset:
+        endpoint: "openAI"
+        model: "gpt-5.6"
     - name: "gpt-5.5"
       label: "GPT-5.5"
-      description: "最新旗舰模型"
+      description: "旗舰模型"
       showInMenu: true
       preset:
         endpoint: "openAI"

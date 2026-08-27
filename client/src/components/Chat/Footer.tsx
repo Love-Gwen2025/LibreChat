@@ -39,9 +39,9 @@ function Footer({ className, startupConfig }: FooterProps) {
   const mainContentParts = (
     typeof config?.customFooter === 'string'
       ? config.customFooter
-      : '[BmChat ' +
+      : '[bubble ' +
         Constants.VERSION +
-        '](https://bm.clawvp.com) - ' +
+        '](https://chat.bubble-tree.com) - ' +
         localize('com_ui_latest_footer')
   ).split('|');
 

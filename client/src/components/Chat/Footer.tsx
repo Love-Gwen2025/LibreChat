@@ -39,7 +39,7 @@ function Footer({ className, startupConfig }: FooterProps) {
   const mainContentParts = (
     typeof config?.customFooter === 'string'
       ? config.customFooter
-      : '[bubble ' +
+      : '[bubbletree-chat ' +
         Constants.VERSION +
         '](https://chat.bubble-tree.com) - ' +
         localize('com_ui_latest_footer')
